@@ -10,26 +10,14 @@ class InventarioSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Tus datos de inventario que ya funcionan (No los tocamos)
-        Inventario::create([
-            'nombre' => 'Prótesis de Rodilla A1',
-            'tipo' => 'protesis',
-            'cantidad' => 12,
-            'estado' => 'disponible',
-            'marca' => 'BioMed',
-            'modelo' => 'X-200'
-        ]);
-
-        // 2. ¡AGREGAMOS PACIENTES DE PRUEBA!
-        DB::table('pacientes')->insert([
-            ['nombre' => 'Yolanda Marroquín', 'historial_clinico' => 'Rehabilitación de rodilla izquierda.'],
-            ['nombre' => 'Carlos Fuentes', 'historial_clinico' => 'Terapia física por esguince lumbal.']
-        ]);
-
-        // 3. ¡AGREGAMOS FISIOTERAPEUTAS DE PRUEBA!
-        DB::table('fisioterapeutas')->insert([
-            ['nombre' => 'Dra. Elena Rostrán', 'especialidad' => 'Traumatología'],
-            ['nombre' => 'Dr. Walter Amaya', 'especialidad' => 'Fisioterapia Deportiva']
+        DB::table('inventario')->insert([
+            ['nombre' => 'Prótesis de Rodilla A1',    'tipo' => 'Prótesis',                 'marca' => 'BioMed',      'modelo' => 'X-200',       'cantidad' => 12, 'estado' => 'disponible',    'created_at' => now(), 'updated_at' => now()],
+            ['nombre' => 'Cinta Elástica Roja',        'tipo' => 'Material Clínico',         'marca' => 'TheraBand',   'modelo' => 'Rojo',        'cantidad' => 3,  'estado' => 'baja',          'created_at' => now(), 'updated_at' => now()],
+            ['nombre' => 'Ultrasonido Terapéutico',    'tipo' => 'Electroterapia',            'marca' => 'Chattanooga', 'modelo' => 'U1',          'cantidad' => 5,  'estado' => 'en_uso',        'created_at' => now(), 'updated_at' => now()],
+            ['nombre' => 'Camilla de Tratamiento',     'tipo' => 'Equipo de Rehabilitación', 'marca' => 'Hausmann',    'modelo' => '4700',        'cantidad' => 8,  'estado' => 'disponible',    'created_at' => now(), 'updated_at' => now()],
+            ['nombre' => 'Bicicleta Estática',         'tipo' => 'Equipo de Rehabilitación', 'marca' => 'NuStep',      'modelo' => 'T5',          'cantidad' => 2,  'estado' => 'baja',          'created_at' => now(), 'updated_at' => now()],
+            ['nombre' => 'Electoestimulador TENS',     'tipo' => 'Electroterapia',            'marca' => 'Compex',      'modelo' => 'Sport Elite', 'cantidad' => 4,  'estado' => 'disponible',    'created_at' => now(), 'updated_at' => now()],
+            ['nombre' => 'Pelota de Rehabilitación',   'tipo' => 'Material Clínico',         'marca' => 'Gymnic',      'modelo' => '65cm',        'cantidad' => 10, 'estado' => 'disponible',    'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 }

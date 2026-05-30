@@ -19,30 +19,21 @@
           Dashboard
         </router-link>
 
-        <div class="nav-item" @click="toggle('citas')">
+        <router-link to="/citas" class="nav-item" active-class="active">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
             <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
           Citas
-        </div>
+        </router-link>
 
-        <div class="nav-group">
-          <div class="nav-item" @click="toggle('pacientes')">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-            </svg>
-            Pacientes
-            <svg class="chevron" :class="{ open: open.pacientes }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
-          <div class="nav-sub" v-show="open.pacientes">
-            <span class="sub-item">Ver pacientes</span>
-            <span class="sub-item">Nuevo paciente</span>
-          </div>
-        </div>
+        <router-link to="/pacientes" class="nav-item" active-class="active">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+          </svg>
+          Pacientes
+        </router-link>
 
         <router-link to="/fisioterapeutas" class="nav-item" active-class="active">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

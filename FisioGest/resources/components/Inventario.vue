@@ -50,9 +50,9 @@
               <td><span class="tag-tipo">{{ item.tipo }}</span></td>
               <td class="td-center">{{ item.cantidad }}</td>
               <td>
-                <span class="estado-badge" :class="item.estado === 'Available' ? 'available' : 'low'">
+                <span class="estado-badge" :class="item.estado">
                   <span class="estado-dot"></span>
-                  {{ item.estado }}
+                  {{ etiquetaEstado(item.estado) }}
                 </span>
               </td>
               <td class="td-actions">
@@ -110,16 +110,21 @@
                 <div class="estado-select">
                   <span class="estado-dot available"></span>
                   <select v-model="form.estado">
-                    <option value="Available">Available</option>
-                    <option value="Stock Bajo">Stock Bajo</option>
-                    <option value="En Uso">En Uso</option>
+                    <option value="disponible">Disponible</option>
+                    <option value="en_uso">En Uso</option>
+                    <option value="mantenimiento">Mantenimiento</option>
+                    <option value="baja">Stock Bajo</option>
                   </select>
                 </div>
               </div>
             </div>
 
+            <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
+
             <div class="modal-actions">
-              <button type="submit" class="btn-guardar">Guardar</button>
+              <button type="submit" class="btn-guardar" :disabled="saving">
+                {{ saving ? 'Guardando...' : 'Guardar' }}
+              </button>
               <button type="button" class="btn-cancelar" @click="closeModal">Cancelar</button>
             </div>
           </form>
@@ -131,37 +136,42 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
+import { inventarioService } from '@/services/api'
 
-const showModal = ref(false)
+const showModal   = ref(false)
 const editingItem = ref(null)
+const saving      = ref(false)
+const errorMsg    = ref('')
 
-const form = ref({ nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 12, estado: 'Available' })
+const form = ref({ nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 1, estado: 'disponible' })
 
-const items = ref([
-  { id: 1, nombre: 'Prótesis de Rodilla A1',  modelo: 'OrthoTech K1',   tipo: 'Prótesis',                cantidad: 12, estado: 'Available' },
-  { id: 2, nombre: 'Prótesis de Rodilla A1',  modelo: 'OrthoTech K1',   tipo: 'Prótesis',                cantidad: 12, estado: 'Available' },
-  { id: 3, nombre: 'Cinta Elástica Roja',     modelo: 'TheraBand Rojo', tipo: 'Material Clínico',        cantidad: 3,  estado: 'Stock Bajo' },
-  { id: 4, nombre: 'Cinta Elástica Roja',     modelo: 'TheraBand Rojo', tipo: 'Material Clínico',        cantidad: 3,  estado: 'Stock Bajo' },
-  { id: 5, nombre: 'Ultrasonido Terapéutico', modelo: 'Chattanooga U1', tipo: 'Electroterapia',          cantidad: 5,  estado: 'En Uso'    },
-  { id: 6, nombre: 'Camilla de Tratamiento',  modelo: 'Hausmann 4700',  tipo: 'Equipo de Rehabilitación', cantidad: 8, estado: 'Available' },
-  { id: 7, nombre: 'Bicicleta Estática',      modelo: 'NuStep T5',      tipo: 'Equipo de Rehabilitación', cantidad: 2, estado: 'Stock Bajo' },
-])
+const items = ref([])
 
 const stats = computed(() => ({
   total:     items.value.length,
-  enUso:     items.value.filter(i => i.estado === 'En Uso').length,
-  stockBajo: items.value.filter(i => i.estado === 'Stock Bajo').length,
+  enUso:     items.value.filter(i => i.estado === 'en_uso').length,
+  stockBajo: items.value.filter(i => i.estado === 'baja').length,
   alertas:   items.value.filter(i => i.cantidad <= 3).length,
 }))
 
+async function cargarItems() {
+  try {
+    const res = await inventarioService.getAll()
+    items.value = res.data
+  } catch {
+    items.value = []
+  }
+}
+
 function openModal(item) {
   editingItem.value = item
+  errorMsg.value = ''
   if (item) {
-    form.value = { nombre: item.nombre, modelo: item.modelo, tipo: item.tipo, cantidad: item.cantidad, estado: item.estado }
+    form.value = { nombre: item.nombre, modelo: item.modelo ?? '', tipo: item.tipo, cantidad: item.cantidad, estado: item.estado }
   } else {
-    form.value = { nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 12, estado: 'Available' }
+    form.value = { nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 1, estado: 'disponible' }
   }
   showModal.value = true
 }
@@ -171,15 +181,24 @@ function closeModal() {
   editingItem.value = null
 }
 
-function saveItem() {
-  if (editingItem.value) {
-    const idx = items.value.findIndex(i => i.id === editingItem.value.id)
-    if (idx !== -1) items.value[idx] = { ...editingItem.value, ...form.value }
-  } else {
-    items.value.push({ id: Date.now(), ...form.value })
+const etiquetas = { disponible: 'Disponible', en_uso: 'En Uso', mantenimiento: 'Mantenimiento', baja: 'Stock Bajo' }
+function etiquetaEstado(val) { return etiquetas[val] ?? val }
+
+async function saveItem() {
+  saving.value   = true
+  errorMsg.value = ''
+  try {
+    await inventarioService.create(form.value)
+    await cargarItems()
+    closeModal()
+  } catch {
+    errorMsg.value = 'Error al guardar. Verifica los datos.'
+  } finally {
+    saving.value = false
   }
-  closeModal()
 }
+
+onMounted(cargarItems)
 </script>
 
 <style scoped>
@@ -339,11 +358,17 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   border-radius: 50%;
 }
 
-.estado-badge.available { color: #4ade80; }
-.estado-badge.available .estado-dot { background: #4ade80; }
+.estado-badge.disponible { color: #4ade80; }
+.estado-badge.disponible .estado-dot { background: #4ade80; }
 
-.estado-badge.low { color: #f59e0b; }
-.estado-badge.low .estado-dot { background: #f59e0b; }
+.estado-badge.en_uso { color: #38bdf8; }
+.estado-badge.en_uso .estado-dot { background: #38bdf8; }
+
+.estado-badge.mantenimiento { color: #f59e0b; }
+.estado-badge.mantenimiento .estado-dot { background: #f59e0b; }
+
+.estado-badge.baja { color: #f87171; }
+.estado-badge.baja .estado-dot { background: #f87171; }
 
 /* Action buttons */
 .td-actions { display: flex; gap: 0.4rem; align-items: center; }

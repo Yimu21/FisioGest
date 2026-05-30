@@ -11,8 +11,7 @@ class InventarioController extends Controller
     // Esta es la parte 1 que ya te cargó bien
     public function index()
     {
-        $items = Inventario::all();
-        return view('inventario', compact('items'));
+        return response()->json(Inventario::all());
     }
 
     // ==========================================
@@ -34,6 +33,6 @@ class InventarioController extends Controller
         Inventario::create($validatedData);
 
         // 3. Redirigimos de vuelta al inventario con un mensaje de éxito
-        return redirect()->route('dashboard.inventario.index')->with('success', '¡Equipo añadido con éxito!');
+        return response()->json(['success' => true, 'message' => 'Equipo añadido con éxito.'], 201);
     }
 }

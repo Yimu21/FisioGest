@@ -15,10 +15,10 @@ class Inventario extends Model
     protected $fillable = [
         'nombre',
         'tipo',
-        'modelo',     
+        'marca',
+        'modelo',
         'estado',
         'cantidad',
         'descripcion',
-        
     ];
 }

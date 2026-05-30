@@ -32,16 +32,23 @@ Route::get('/pacientes', function () {
     return response()->json($pacientes);
 });
 
-// Guardar paciente desde Vue (Fuerza el usuario_id para romper el candado SQLite)
+// Guardar paciente desde Vue
 Route::post('/pacientes', function (Request $request) {
     DB::table('pacientes')->insert([
-        'nombre' => $request->input('nombre', 'Paciente Temporal'),
-        'usuario_id' => 1 // Evita el error "NOT NULL constraint failed"
+        'usuario_id'        => 1,
+        'nombre'            => $request->nombre,
+        'apellido'          => $request->apellido,
+        'fecha_nacimiento'  => $request->fecha_nacimiento,
+        'genero'            => $request->genero,
+        'telefono'          => $request->telefono,
+        'fisioterapeuta_id' => $request->fisioterapeuta_id ?: null,
+        'created_at'        => now(),
+        'updated_at'        => now(),
     ]);
 
     return response()->json([
         'success' => true,
-        'message' => 'Paciente guardado exitosamente desde API'
+        'message' => 'Paciente guardado exitosamente.'
     ]);
 });
 
@@ -59,15 +66,17 @@ Route::get('/citas', function () {
 // Guardar cita desde tu formulario
 Route::post('/citas', function (Request $request) {
     DB::table('citas')->insert([
-        'paciente_id' => $request->paciente_id,
+        'paciente_id'       => $request->paciente_id,
         'fisioterapeuta_id' => $request->fisioterapeuta_id,
-        'fecha' => $request->fecha,
-        'hora' => $request->hora,
-        'motivo' => $request->motivo,
+        'fecha_hora'        => $request->fecha_hora,
+        'motivo'            => $request->motivo,
+        'estado'            => 'programada',
+        'created_at'        => now(),
+        'updated_at'        => now(),
     ]);
 
     return response()->json([
         'success' => true,
-        'message' => 'Cita agendada exitosamente desde API'
+        'message' => 'Cita agendada exitosamente.'
     ]);
 });
