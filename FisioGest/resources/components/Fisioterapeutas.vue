@@ -62,7 +62,7 @@
               </td>
               <td class="td-actions">
                 <button class="btn-editar" @click="openModal(f)">Editar</button>
-                <button class="btn-horario" @click="openHorario(f)">Ver Horario</button>
+                <button class="btn-horario" @click="openEditHorario(f)">Horario</button>
               </td>
             </tr>
           </tbody>
@@ -130,23 +130,47 @@
       </div>
     </Teleport>
 
-    <!-- ── Modal Horario ── -->
+    <!-- ── Modal Editar Horario ── -->
     <Teleport to="body">
-      <div class="modal-overlay" v-if="showHorario" @click.self="showHorario = false">
-        <div class="modal">
+      <div class="modal-overlay" v-if="showEditHorario" @click.self="closeEditHorario">
+        <div class="modal modal-horario">
           <div class="modal-header">
-            <h3>Horario — {{ horarioDe?.nombre }}</h3>
-            <button class="modal-close" @click="showHorario = false">
+            <h3>Horario — {{ horarioFisio?.nombre }}</h3>
+            <button class="modal-close" @click="closeEditHorario">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
           </div>
-          <div class="horario-grid">
-            <div v-for="dia in dias" :key="dia" class="horario-row">
-              <span class="horario-dia">{{ dia }}</span>
-              <span class="horario-hora">09:00 – 17:00</span>
+
+          <div class="horario-edit-grid">
+            <div v-for="dia in diasSemana" :key="dia" class="horario-edit-row">
+              <label class="day-toggle">
+                <input type="checkbox" v-model="horarioForm[dia].activo" />
+                <span class="day-track"><span class="day-thumb"></span></span>
+                <span class="day-name" :class="{ 'day-off': !horarioForm[dia].activo }">{{ dia }}</span>
+              </label>
+              <div class="horario-times" :class="{ 'times-disabled': !horarioForm[dia].activo }">
+                <input
+                  class="time-input"
+                  type="time"
+                  v-model="horarioForm[dia].inicio"
+                  :disabled="!horarioForm[dia].activo"
+                />
+                <span class="times-sep">–</span>
+                <input
+                  class="time-input"
+                  type="time"
+                  v-model="horarioForm[dia].fin"
+                  :disabled="!horarioForm[dia].activo"
+                />
+              </div>
             </div>
+          </div>
+
+          <div class="modal-actions" style="margin-top:1.25rem;">
+            <button class="btn-guardar" @click="guardarHorario">Guardar Horario</button>
+            <button class="btn-cancelar" @click="closeEditHorario">Cancelar</button>
           </div>
         </div>
       </div>
@@ -159,21 +183,33 @@
 import { ref, computed } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 
-const showModal   = ref(false)
-const showHorario = ref(false)
-const editando    = ref(null)
-const horarioDe   = ref(null)
+const showModal       = ref(false)
+const showEditHorario = ref(false)
+const editando        = ref(null)
+const horarioFisio    = ref(null)
+const horarioForm     = ref({})
 
-const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
+const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+function defaultHorario() {
+  return {
+    Lunes:     { activo: true,  inicio: '09:00', fin: '17:00' },
+    Martes:    { activo: true,  inicio: '09:00', fin: '17:00' },
+    Miércoles: { activo: true,  inicio: '09:00', fin: '17:00' },
+    Jueves:    { activo: true,  inicio: '09:00', fin: '17:00' },
+    Viernes:   { activo: true,  inicio: '09:00', fin: '17:00' },
+    Sábado:    { activo: false, inicio: '09:00', fin: '13:00' },
+  }
+}
 
 const form = ref({ nombre: '', fechaNacimiento: '', especialidad: 'Diagnóstico', activo: true, correo: '' })
 
 const fisioterapeutas = ref([
-  { id: 1, nombre: 'Manrivel Gorado', fechaNacimiento: '1994-03-09', especialidad: 'Traumatología', activo: true  },
-  { id: 2, nombre: 'Barvis Raten',    fechaNacimiento: '1996-11-07', especialidad: 'Deportiva',     activo: false },
-  { id: 3, nombre: 'Bardena Drides',  fechaNacimiento: '1991-05-22', especialidad: 'Deportiva',     activo: true  },
-  { id: 4, nombre: 'Marina Gomez',    fechaNacimiento: '1996-07-05', especialidad: 'Traumatología', activo: true  },
-  { id: 5, nombre: 'Retmen Nones',    fechaNacimiento: '1997-12-29', especialidad: 'Deportiva',     activo: false },
+  { id: 1, nombre: 'Manrivel Gorado', fechaNacimiento: '1994-03-09', especialidad: 'Traumatología', activo: true,  horario: defaultHorario() },
+  { id: 2, nombre: 'Barvis Raten',    fechaNacimiento: '1996-11-07', especialidad: 'Deportiva',     activo: false, horario: defaultHorario() },
+  { id: 3, nombre: 'Bardena Drides',  fechaNacimiento: '1991-05-22', especialidad: 'Deportiva',     activo: true,  horario: defaultHorario() },
+  { id: 4, nombre: 'Marina Gomez',    fechaNacimiento: '1996-07-05', especialidad: 'Traumatología', activo: true,  horario: defaultHorario() },
+  { id: 5, nombre: 'Retmen Nones',    fechaNacimiento: '1997-12-29', especialidad: 'Deportiva',     activo: false, horario: defaultHorario() },
 ])
 
 const activos = computed(() => fisioterapeutas.value.filter(f => f.activo).length)
@@ -202,9 +238,21 @@ function guardar() {
   closeModal()
 }
 
-function openHorario(f) {
-  horarioDe.value  = f
-  showHorario.value = true
+function openEditHorario(f) {
+  horarioFisio.value    = f
+  horarioForm.value     = JSON.parse(JSON.stringify(f.horario ?? defaultHorario()))
+  showEditHorario.value = true
+}
+
+function closeEditHorario() {
+  showEditHorario.value = false
+  horarioFisio.value    = null
+}
+
+function guardarHorario() {
+  const idx = fisioterapeutas.value.findIndex(f => f.id === horarioFisio.value.id)
+  if (idx !== -1) fisioterapeutas.value[idx].horario = { ...horarioForm.value }
+  closeEditHorario()
 }
 </script>
 
@@ -566,32 +614,106 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 }
 .btn-cancelar:hover { background: #2a2a2a; color: #ffffff; }
 
-/* Horario modal */
-.horario-grid {
+/* Modal horario editable */
+.modal-horario { max-width: 500px; }
+
+.horario-edit-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
-.horario-row {
+.horario-edit-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0.6rem 0.75rem;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.8rem;
   background: #0d0d0d;
   border: 1px solid #1c1c1c;
   border-radius: 7px;
+  transition: border-color 0.15s;
+}
+.horario-edit-row:has(.day-toggle input:checked) {
+  border-color: #074434;
 }
 
-.horario-dia {
-  color: #A9AFB2;
-  font-size: 0.82rem;
-  font-weight: 600;
+/* Toggle del día */
+.day-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  min-width: 130px;
 }
-
-.horario-hora {
+.day-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.day-track {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  background: #2a2a2a;
+  border-radius: 10px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.day-toggle input:checked ~ .day-track { background: #074434; }
+.day-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  background: #6b7280;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.day-toggle input:checked ~ .day-track .day-thumb {
+  transform: translateX(15px);
+  background: #ffffff;
+}
+.day-name {
   color: #f3f4f6;
   font-size: 0.82rem;
-  font-weight: 500;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+.day-name.day-off { color: #4b5563; }
+
+/* Inputs de hora */
+.horario-times {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: opacity 0.15s;
+}
+.horario-times.times-disabled { opacity: 0.3; pointer-events: none; }
+
+.time-input {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  color: #f3f4f6;
+  font-size: 0.82rem;
+  font-family: inherit;
+  outline: none;
+  width: 88px;
+  text-align: center;
+  transition: border-color 0.15s;
+}
+.time-input:focus { border-color: #074434; box-shadow: 0 0 0 2px rgba(7,68,52,0.2); }
+.time-input:disabled { cursor: not-allowed; }
+.time-input::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+
+.times-sep {
+  color: #6b7280;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 </style>

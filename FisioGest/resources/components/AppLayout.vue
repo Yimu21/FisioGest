@@ -140,15 +140,18 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { authService } from '@/services/api'
 
 const router = useRouter()
-const open = ref({ citas: false, pacientes: false, fisio: false, progresos: false })
+const open = ref({ progresos: false })
 
 function toggle(key) {
   open.value[key] = !open.value[key]
 }
 
-function logout() {
+async function logout() {
+  try { await authService.logout() } catch {}
+  localStorage.removeItem('token')
   router.push('/')
 }
 </script>

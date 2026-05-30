@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Usuario;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -41,20 +41,20 @@ class AuthController extends Controller
             'contraseña' => 'required|string',
         ]);
 
-        $user = User::where('email', $data['correo'])->first();
+        $usuario = Usuario::where('correo', $data['correo'])->first();
 
-        if (! $user || ! Hash::check($data['contraseña'], $user->password)) {
+        if (! $usuario || ! Hash::check($data['contraseña'], $usuario->contrasena)) {
             throw ValidationException::withMessages([
                 'correo' => ['Las credenciales no son correctas.'],
             ]);
         }
 
-        $user->tokens()->delete();
+        $usuario->tokens()->delete();
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $token = $usuario->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user'  => $user,
+            'user'  => $usuario,
             'token' => $token,
         ]);
     }

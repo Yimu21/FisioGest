@@ -39,14 +39,15 @@
               <th>Fecha y Hora</th>
               <th>Motivo</th>
               <th>Estado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="5" class="td-empty">Cargando citas...</td>
+              <td colspan="6" class="td-empty">Cargando citas...</td>
             </tr>
             <tr v-else-if="citas.length === 0">
-              <td colspan="5" class="td-empty">No hay citas agendadas. Haz clic en "Agendar Nueva Cita" para empezar.</td>
+              <td colspan="6" class="td-empty">No hay citas agendadas. Haz clic en "Agendar Nueva Cita" para empezar.</td>
             </tr>
             <tr v-for="cita in citas" :key="cita.cita_id" v-else>
               <td class="td-nombre">{{ nombrePaciente(cita.paciente_id) }}</td>
@@ -54,7 +55,24 @@
               <td class="td-fecha">{{ formatFecha(cita.fecha_hora) }}</td>
               <td>{{ cita.motivo || '—' }}</td>
               <td>
-                <span class="estado-badge" :class="cita.estado">{{ cita.estado }}</span>
+                <div class="estado-cell">
+                  <span class="estado-badge" :class="cita.estado">{{ cita.estado }}</span>
+                  <button class="btn-edit-estado" @click="openEstadoModal(cita)" title="Cambiar estado">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+              <td class="td-acciones">
+                <button class="btn-accion" @click="openEditModal(cita)" title="Editar cita">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Editar
+                </button>
               </td>
             </tr>
           </tbody>
@@ -67,7 +85,7 @@
       <div class="modal-overlay" v-if="showModal" @click.self="closeModal">
         <div class="modal">
           <div class="modal-header">
-            <h3>Agendar Nueva Cita</h3>
+            <h3>{{ editingCita ? 'Editar Cita' : 'Agendar Nueva Cita' }}</h3>
             <button class="modal-close" @click="closeModal">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -116,11 +134,60 @@
 
             <div class="modal-actions">
               <button type="submit" class="btn-guardar" :disabled="saving">
-                {{ saving ? 'Guardando...' : 'Agendar Cita' }}
+                {{ saving ? 'Guardando...' : (editingCita ? 'Guardar Cambios' : 'Agendar Cita') }}
               </button>
               <button type="button" class="btn-cancelar" @click="closeModal">Cancelar</button>
             </div>
           </form>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Modal: Cambiar Estado -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showEstadoModal" @click.self="closeEstadoModal">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h3>Cambiar Estado de Cita</h3>
+            <button class="modal-close" @click="closeEstadoModal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="estado-modal-info">
+            <div class="info-row">
+              <span class="info-label">Paciente</span>
+              <span class="info-val">{{ nombrePaciente(citaSeleccionada?.paciente_id) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Fecha y Hora</span>
+              <span class="info-val td-fecha">{{ formatFecha(citaSeleccionada?.fecha_hora) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Estado actual</span>
+              <span class="estado-badge" :class="citaSeleccionada?.estado">{{ citaSeleccionada?.estado }}</span>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top:1rem;">
+            <label>Nuevo Estado *</label>
+            <select v-model="nuevoEstado">
+              <option value="programada">Programada</option>
+              <option value="atendida">Atendida</option>
+              <option value="cancelada">Cancelada (libera el horario)</option>
+            </select>
+          </div>
+
+          <p v-if="errorEstado" class="error-msg" style="margin-top:0.75rem;">{{ errorEstado }}</p>
+
+          <div class="modal-actions" style="margin-top:1.25rem;">
+            <button class="btn-guardar" @click="saveEstado" :disabled="updatingEstado">
+              {{ updatingEstado ? 'Guardando...' : 'Guardar Cambio' }}
+            </button>
+            <button class="btn-cancelar" @click="closeEstadoModal">Cancelar</button>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -136,9 +203,16 @@ import { citaService, pacienteService } from '@/services/api'
 const citas      = ref([])
 const pacientes  = ref([])
 const loading    = ref(true)
-const showModal  = ref(false)
-const saving     = ref(false)
-const errorMsg   = ref('')
+const showModal    = ref(false)
+const saving       = ref(false)
+const errorMsg     = ref('')
+const editingCita  = ref(null)
+
+const showEstadoModal  = ref(false)
+const citaSeleccionada = ref(null)
+const nuevoEstado      = ref('')
+const updatingEstado   = ref(false)
+const errorEstado      = ref('')
 
 const fisioterapeutas = ref([
   { fisioterapeuta_id: 1, nombre: 'Manrivel', apellido: 'Gorado',  especialidad: 'Traumatología' },
@@ -151,13 +225,56 @@ const fisioterapeutas = ref([
 const form = ref({ paciente_id: '', fisioterapeuta_id: '', fecha: '', hora: '', motivo: '' })
 
 function openModal() {
+  editingCita.value = null
   form.value = { paciente_id: '', fisioterapeuta_id: '', fecha: '', hora: '', motivo: '' }
   errorMsg.value = ''
   showModal.value = true
 }
 
+function openEditModal(cita) {
+  editingCita.value = cita
+  const [fecha, horaCompleta] = (cita.fecha_hora ?? '').split(' ')
+  const hora = horaCompleta ? horaCompleta.slice(0, 5) : ''
+  form.value = {
+    paciente_id:       cita.paciente_id,
+    fisioterapeuta_id: cita.fisioterapeuta_id,
+    fecha,
+    hora,
+    motivo: cita.motivo ?? '',
+  }
+  errorMsg.value  = ''
+  showModal.value = true
+}
+
 function closeModal() {
-  showModal.value = false
+  showModal.value   = false
+  editingCita.value = null
+}
+
+function openEstadoModal(cita) {
+  citaSeleccionada.value = cita
+  nuevoEstado.value      = cita.estado
+  errorEstado.value      = ''
+  showEstadoModal.value  = true
+}
+
+function closeEstadoModal() {
+  showEstadoModal.value  = false
+  citaSeleccionada.value = null
+}
+
+async function saveEstado() {
+  updatingEstado.value = true
+  errorEstado.value    = ''
+  try {
+    await citaService.updateEstado(citaSeleccionada.value.cita_id, nuevoEstado.value)
+    await cargarDatos()
+    closeEstadoModal()
+  } catch {
+    errorEstado.value = 'Error al actualizar el estado. Intenta nuevamente.'
+  } finally {
+    updatingEstado.value = false
+  }
 }
 
 function nombrePaciente(id) {
@@ -193,16 +310,21 @@ async function cargarDatos() {
 async function saveCita() {
   saving.value   = true
   errorMsg.value = ''
+  const payload = {
+    paciente_id:       form.value.paciente_id,
+    fisioterapeuta_id: form.value.fisioterapeuta_id,
+    fecha_hora:        `${form.value.fecha} ${form.value.hora}:00`,
+    motivo:            form.value.motivo,
+  }
   try {
-    await citaService.create({
-      paciente_id:       form.value.paciente_id,
-      fisioterapeuta_id: form.value.fisioterapeuta_id,
-      fecha_hora:        `${form.value.fecha} ${form.value.hora}:00`,
-      motivo:            form.value.motivo,
-    })
+    if (editingCita.value) {
+      await citaService.update(editingCita.value.cita_id, payload)
+    } else {
+      await citaService.create(payload)
+    }
     await cargarDatos()
     closeModal()
-  } catch (e) {
+  } catch {
     errorMsg.value = 'Error al guardar la cita. Verifica los datos.'
   } finally {
     saving.value = false
@@ -479,4 +601,91 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   transition: background 0.15s, color 0.15s;
 }
 .btn-cancelar:hover { background: #2a2a2a; color: #d1d5db; }
+
+/* Columna de acciones */
+.td-acciones {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: 0.5rem;
+}
+
+.btn-accion {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+.btn-accion:hover {
+  background: rgba(255,255,255,0.08);
+  color: #e5e7eb;
+  border-color: #3a3a3a;
+}
+
+/* Estado cell con botón de editar */
+.estado-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.btn-edit-estado {
+  background: none;
+  border: none;
+  color: #4b5563;
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.btn-edit-estado:hover {
+  color: #9ca3af;
+  background: rgba(255,255,255,0.06);
+}
+
+/* Modal compacto para cambiar estado */
+.modal-sm {
+  max-width: 380px;
+}
+
+.estado-modal-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: #0d0d0d;
+  border: 1px solid #1c1c1c;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.info-label {
+  color: #6b7280;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.4px;
+}
+
+.info-val {
+  color: #d1d5db;
+  font-weight: 500;
+}
 </style>

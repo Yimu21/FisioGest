@@ -6,14 +6,19 @@ use Illuminate\Http\Request;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes - FisioGest (Modo de Rescate de Integridad)
+| API Routes - FisioGest
 |--------------------------------------------------------------------------
-|
-| Aquí se registran las rutas de la API para tu aplicación.
-| Cada ruta está blindada para inyectar los datos obligatorios 
-| que la base de datos SQLite exige y evitar errores 500.
-|
 */
+
+// =========================================================================
+// 0. AUTENTICACIÓN
+// =========================================================================
+Route::post('/login',    [\App\Http\Controllers\Api\AuthController::class, 'login']);
+Route::post('/register', [\App\Http\Controllers\Api\AuthController::class, 'register']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
+    Route::get('/me',      [\App\Http\Controllers\Api\AuthController::class, 'me']);
+});
 
 // =========================================================================
 // 1. MÓDULO DE INVENTARIO (Rutas originales estables)
@@ -30,6 +35,26 @@ Route::post('/inventario', [\App\Http\Controllers\Api\InventarioController::clas
 Route::get('/pacientes', function () {
     $pacientes = DB::table('pacientes')->get();
     return response()->json($pacientes);
+});
+
+// Editar paciente
+Route::put('/pacientes/{id}', function (Request $request, $id) {
+    DB::table('pacientes')->where('paciente_id', $id)->update([
+        'nombre'            => $request->nombre,
+        'apellido'          => $request->apellido,
+        'fecha_nacimiento'  => $request->fecha_nacimiento,
+        'genero'            => $request->genero,
+        'telefono'          => $request->telefono,
+        'fisioterapeuta_id' => $request->fisioterapeuta_id ?: null,
+        'updated_at'        => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Paciente actualizado.']);
+});
+
+// Eliminar paciente
+Route::delete('/pacientes/{id}', function ($id) {
+    DB::table('pacientes')->where('paciente_id', $id)->delete();
+    return response()->json(['success' => true, 'message' => 'Paciente eliminado.']);
 });
 
 // Guardar paciente desde Vue
@@ -79,4 +104,29 @@ Route::post('/citas', function (Request $request) {
         'success' => true,
         'message' => 'Cita agendada exitosamente.'
     ]);
+});
+
+// Editar todos los campos de una cita
+Route::put('/citas/{id}', function (Request $request, $id) {
+    DB::table('citas')->where('cita_id', $id)->update([
+        'paciente_id'       => $request->paciente_id,
+        'fisioterapeuta_id' => $request->fisioterapeuta_id,
+        'fecha_hora'        => $request->fecha_hora,
+        'motivo'            => $request->motivo,
+        'updated_at'        => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Cita actualizada.']);
+});
+
+// Actualizar estado de una cita (cancelar libera el bloque de tiempo)
+Route::patch('/citas/{id}', function (Request $request, $id) {
+    $estados = ['programada', 'atendida', 'cancelada'];
+    if (!in_array($request->estado, $estados)) {
+        return response()->json(['success' => false, 'message' => 'Estado inválido.'], 422);
+    }
+    DB::table('citas')->where('cita_id', $id)->update([
+        'estado'     => $request->estado,
+        'updated_at' => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Estado actualizado.']);
 });

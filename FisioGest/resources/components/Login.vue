@@ -8,10 +8,10 @@
 
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="form-group">
-          <label for="email">Correo electrónico</label>
+          <label for="correo">Correo electrónico</label>
           <input
-            id="email"
-            v-model="form.email"
+            id="correo"
+            v-model="form.correo"
             type="email"
             placeholder="correo@ejemplo.com"
             required
@@ -19,10 +19,10 @@
         </div>
 
         <div class="form-group">
-          <label for="password">Contraseña</label>
+          <label for="contrasena">Contraseña</label>
           <input
-            id="password"
-            v-model="form.password"
+            id="contrasena"
+            v-model="form.contrasena"
             type="password"
             placeholder="••••••••"
             required
@@ -31,7 +31,9 @@
 
         <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
-        <button type="submit" class="btn-login">Iniciar sesión</button>
+        <button type="submit" class="btn-login" :disabled="loading">
+          {{ loading ? 'Verificando...' : 'Iniciar sesión' }}
+        </button>
       </form>
     </div>
   </div>
@@ -40,18 +42,24 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { authService } from '@/services/api'
 
-const router = useRouter()
-
-const form = ref({ email: '', password: '' })
+const router   = useRouter()
+const form     = ref({ correo: '', contrasena: '' })
 const errorMsg = ref('')
+const loading  = ref(false)
 
-function handleLogin() {
-  // Credenciales de ejemplo — reemplazar con llamada real a la API
-  if (form.value.email === 'admin@fisiogest.com' && form.value.password === 'admin123') {
+async function handleLogin() {
+  loading.value  = true
+  errorMsg.value = ''
+  try {
+    const res = await authService.login(form.value.correo, form.value.contrasena)
+    localStorage.setItem('token', res.data.token)
     router.push('/dashboard')
-  } else {
+  } catch {
     errorMsg.value = 'Correo o contraseña incorrectos.'
+  } finally {
+    loading.value = false
   }
 }
 </script>

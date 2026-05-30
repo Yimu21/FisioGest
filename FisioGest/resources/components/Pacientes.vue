@@ -39,14 +39,15 @@
               <th>Fecha Nacimiento</th>
               <th>Teléfono</th>
               <th>Especialista Asignado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="5" class="td-empty">Cargando pacientes...</td>
+              <td colspan="6" class="td-empty">Cargando pacientes...</td>
             </tr>
             <tr v-else-if="pacientes.length === 0">
-              <td colspan="5" class="td-empty">No hay pacientes registrados. Haz clic en "Nuevo Paciente" para empezar.</td>
+              <td colspan="6" class="td-empty">No hay pacientes registrados. Haz clic en "Nuevo Paciente" para empezar.</td>
             </tr>
             <tr v-for="p in pacientes" :key="p.paciente_id" v-else>
               <td class="td-nombre">{{ p.nombre }} {{ p.apellido }}</td>
@@ -56,6 +57,23 @@
               <td class="td-fecha">{{ formatFecha(p.fecha_nacimiento) }}</td>
               <td>{{ p.telefono || '—' }}</td>
               <td class="td-fisio">{{ nombreFisio(p.fisioterapeuta_id) }}</td>
+              <td class="td-acciones">
+                <button class="btn-accion" @click="openEditModal(p)" title="Editar paciente">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Editar
+                </button>
+                <button class="btn-accion btn-danger" @click="openDeleteModal(p)" title="Eliminar paciente">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/>
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  </svg>
+                  Eliminar
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -67,7 +85,7 @@
       <div class="modal-overlay" v-if="showModal" @click.self="closeModal">
         <div class="modal">
           <div class="modal-header">
-            <h3>Nuevo Paciente</h3>
+            <h3>{{ editingPaciente ? 'Editar Paciente' : 'Nuevo Paciente' }}</h3>
             <button class="modal-close" @click="closeModal">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -121,11 +139,48 @@
 
             <div class="modal-actions">
               <button type="submit" class="btn-guardar" :disabled="saving">
-                {{ saving ? 'Guardando...' : 'Guardar Paciente' }}
+                {{ saving ? 'Guardando...' : (editingPaciente ? 'Guardar Cambios' : 'Guardar Paciente') }}
               </button>
               <button type="button" class="btn-cancelar" @click="closeModal">Cancelar</button>
             </div>
           </form>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Modal: Confirmar eliminación -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showDeleteModal" @click.self="closeDeleteModal">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h3>Eliminar Paciente</h3>
+            <button class="modal-close" @click="closeDeleteModal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="delete-warning">
+            <div class="warning-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <p class="warning-text">
+              ¿Estás seguro de eliminar a
+              <strong>{{ pacienteAEliminar?.nombre }} {{ pacienteAEliminar?.apellido }}</strong>?
+              Esta acción no se puede deshacer.
+            </p>
+          </div>
+
+          <div class="modal-actions" style="margin-top:1.25rem;">
+            <button class="btn-eliminar" @click="confirmDelete" :disabled="deleting">
+              {{ deleting ? 'Eliminando...' : 'Sí, eliminar' }}
+            </button>
+            <button class="btn-cancelar" @click="closeDeleteModal">Cancelar</button>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -138,11 +193,16 @@ import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { pacienteService } from '@/services/api'
 
-const pacientes  = ref([])
-const loading    = ref(true)
-const showModal  = ref(false)
-const saving     = ref(false)
-const errorMsg   = ref('')
+const pacientes        = ref([])
+const loading          = ref(true)
+const showModal        = ref(false)
+const saving           = ref(false)
+const errorMsg         = ref('')
+const editingPaciente  = ref(null)
+
+const showDeleteModal   = ref(false)
+const pacienteAEliminar = ref(null)
+const deleting          = ref(false)
 
 const fisioterapeutas = ref([
   { fisioterapeuta_id: 1, nombre: 'Manrivel', apellido: 'Gorado',  especialidad: 'Traumatología' },
@@ -158,12 +218,54 @@ const form = ref({
 })
 
 function openModal() {
+  editingPaciente.value = null
   form.value = { nombre: '', apellido: '', fecha_nacimiento: '', genero: 'masculino', telefono: '', fisioterapeuta_id: '' }
-  errorMsg.value = ''
+  errorMsg.value  = ''
   showModal.value = true
 }
 
-function closeModal() { showModal.value = false }
+function openEditModal(p) {
+  editingPaciente.value = p
+  form.value = {
+    nombre:            p.nombre,
+    apellido:          p.apellido,
+    fecha_nacimiento:  p.fecha_nacimiento ?? '',
+    genero:            p.genero ?? 'masculino',
+    telefono:          p.telefono ?? '',
+    fisioterapeuta_id: p.fisioterapeuta_id ?? '',
+  }
+  errorMsg.value  = ''
+  showModal.value = true
+}
+
+function closeModal() {
+  showModal.value       = false
+  editingPaciente.value = null
+}
+
+function openDeleteModal(p) {
+  pacienteAEliminar.value = p
+  showDeleteModal.value   = true
+}
+
+function closeDeleteModal() {
+  showDeleteModal.value   = false
+  pacienteAEliminar.value = null
+}
+
+async function confirmDelete() {
+  deleting.value = true
+  try {
+    await pacienteService.delete(pacienteAEliminar.value.paciente_id)
+    await cargarPacientes()
+    closeDeleteModal()
+  } catch {
+    // si falla simplemente cerramos
+    closeDeleteModal()
+  } finally {
+    deleting.value = false
+  }
+}
 
 function capitalize(str) { return str ? str.charAt(0).toUpperCase() + str.slice(1) : '' }
 
@@ -195,7 +297,11 @@ async function savePaciente() {
   saving.value   = true
   errorMsg.value = ''
   try {
-    await pacienteService.create(form.value)
+    if (editingPaciente.value) {
+      await pacienteService.update(editingPaciente.value.paciente_id, form.value)
+    } else {
+      await pacienteService.create(form.value)
+    }
     await cargarPacientes()
     closeModal()
   } catch {
@@ -433,4 +539,81 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   transition: background 0.15s, color 0.15s;
 }
 .btn-cancelar:hover { background: #2a2a2a; color: #d1d5db; }
+
+/* Columna de acciones */
+.td-acciones {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: 0.5rem;
+}
+
+.btn-accion {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  font-family: inherit;
+  margin-right: 0.4rem;
+}
+.btn-accion:last-child { margin-right: 0; }
+.btn-accion:hover {
+  background: rgba(255,255,255,0.08);
+  color: #e5e7eb;
+  border-color: #3a3a3a;
+}
+.btn-accion.btn-danger { color: #f87171; border-color: rgba(239,68,68,0.2); }
+.btn-accion.btn-danger:hover {
+  background: rgba(239,68,68,0.1);
+  color: #fca5a5;
+  border-color: rgba(239,68,68,0.35);
+}
+
+/* Modal compacto */
+.modal-sm { max-width: 380px; }
+
+/* Modal de eliminación */
+.delete-warning {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.warning-icon { flex-shrink: 0; margin-top: 0.1rem; }
+
+.warning-text {
+  color: #d1d5db;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.warning-text strong { color: #ffffff; }
+
+.btn-eliminar {
+  flex: 1;
+  background: #7f1d1d;
+  color: #fca5a5;
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 7px;
+  padding: 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.btn-eliminar:hover:not(:disabled) { background: #991b1b; }
+.btn-eliminar:disabled { opacity: 0.6; cursor: not-allowed; }
 </style>
