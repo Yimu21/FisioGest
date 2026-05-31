@@ -83,6 +83,35 @@ Route::post('/citas', function (Request $request) {
 // =========================================================================
 // 4. MÓDULOS DE INVENTARIO Y FISIOTERAPEUTAS
 // =========================================================================
+// ─── VISTA DE FISIOTERAPEUTA ──────────────────────────────────────────────
+
+Route::get('/fisio/dashboard', function () {
+    $pacientes = DB::table('pacientes')->get();
+    return view('fisio.dashboard', compact('pacientes'));
+})->name('fisio.dashboard');
+
+Route::get('/fisio/pacientes', function (Request $request) {
+    $pacientes = DB::table('pacientes')->get();
+    $selectedId = $request->query('id', 'ER001');
+    return view('fisio.pacientes', compact('pacientes', 'selectedId'));
+})->name('fisio.pacientes');
+
+Route::get('/fisio/asignaciones', function () {
+    $items = DB::table('inventario')->get();
+    $pacientes = DB::table('pacientes')->get();
+    return view('fisio.asignaciones', compact('items', 'pacientes'));
+})->name('fisio.asignaciones');
+
+Route::get('/fisio/citas', function () {
+    $citas = DB::table('citas')->where('fisioterapeuta_id', 1)->get();
+    if ($citas->isEmpty()) {
+        $citas = DB::table('citas')->get();
+    }
+    $pacientes = DB::table('pacientes')->get();
+    return view('fisio.citas', compact('citas', 'pacientes'));
+})->name('fisio.citas');
+
+// ─────────────────────────────────────────────────────────────────────────
 Route::get('/fisioterapeutas', function () {
     $fisioterapeutas = collect([
         (object)['fisioterapeuta_id' => 1, 'nombre' => 'Manrivel', 'apellido' => 'Gorado', 'especialidad' => 'Traumatología'],
@@ -114,4 +143,4 @@ Route::get('/inventario', function () {
 // Esta regla modificada le prohíbe explícitamente a Laravel tocar tus URLs reales.
 Route::get('/{any}', function () { 
     return view('welcome'); 
-})->where('any', '^(?!api|pacientes|citas|inventario|fisioterapeutas|login|logout).*$');
+})->where('any', '^(?!api|pacientes|citas|inventario|fisioterapeutas|fisio|login|logout).*$');

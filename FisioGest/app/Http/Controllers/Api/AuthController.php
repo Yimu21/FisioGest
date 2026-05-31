@@ -14,22 +14,22 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'nombre'     => 'required|string|max:100',
-            'correo'     => 'required|email|unique:users,email',
+            'correo'     => 'required|email|unique:usuarios,correo',
             'contraseña' => 'required|string|min:8|confirmed',
             'rol'        => 'sometimes|in:admin,fisioterapeuta,paciente',
         ]);
 
-        $user = User::create([
-            'name'     => $data['nombre'],
-            'email'    => $data['correo'],
-            'password' => Hash::make($data['contraseña']),
-            'rol'      => $data['rol'] ?? 'paciente',
+        $usuario = Usuario::create([
+            'nombre'    => $data['nombre'],
+            'correo'    => $data['correo'],
+            'contrasena' => Hash::make($data['contraseña']),
+            'rol'       => $data['rol'] ?? 'paciente',
         ]);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $token = $usuario->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user'  => $user,
+            'user'  => $usuario,
             'token' => $token,
         ], 201);
     }

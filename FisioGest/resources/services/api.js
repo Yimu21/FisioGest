@@ -12,6 +12,31 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// ── Helpers de sesión ────────────────────────────────────────────────────────
+export function saveUser(user, token) {
+  localStorage.setItem('token', token)
+  localStorage.setItem('user', JSON.stringify(user))
+}
+
+export function getUser() {
+  try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
+}
+
+export function clearUser() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+}
+
+export function isAuthenticated() {
+  return !!localStorage.getItem('token')
+}
+
+export function getUserRole() {
+  const u = getUser()
+  return u?.rol ?? null
+}
+
+// ── Servicios ────────────────────────────────────────────────────────────────
 export const authService = {
   login:  (correo, contrasena) => api.post('/login', { correo, contraseña: contrasena }),
   logout: () => api.post('/logout'),
@@ -34,4 +59,14 @@ export const pacienteService = {
 export const inventarioService = {
   getAll:  () => api.get('/inventario'),
   create:  (data) => api.post('/inventario', data),
+}
+
+export const fisioterapeutaService = {
+  getAll: () => api.get('/fisioterapeutas'),
+}
+
+// Endpoints exclusivos del fisioterapeuta autenticado (filtrados en backend)
+export const fisioService = {
+  misPacientes: () => api.get('/fisio/mis-pacientes'),
+  misCitas:     () => api.get('/fisio/mis-citas'),
 }

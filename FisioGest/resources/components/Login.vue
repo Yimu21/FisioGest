@@ -42,7 +42,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { authService } from '@/services/api'
+import { authService, saveUser } from '@/services/api'
 
 const router   = useRouter()
 const form     = ref({ correo: '', contrasena: '' })
@@ -53,9 +53,17 @@ async function handleLogin() {
   loading.value  = true
   errorMsg.value = ''
   try {
-    const res = await authService.login(form.value.correo, form.value.contrasena)
-    localStorage.setItem('token', res.data.token)
-    router.push('/dashboard')
+    const res  = await authService.login(form.value.correo, form.value.contrasena)
+    const user  = res.data.user
+    const token = res.data.token
+
+    saveUser(user, token)
+
+    if (user.rol === 'fisioterapeuta') {
+      router.push('/fisio/dashboard')
+    } else {
+      router.push('/dashboard')
+    }
   } catch {
     errorMsg.value = 'Correo o contraseña incorrectos.'
   } finally {

@@ -17,6 +17,7 @@ class Usuario extends Authenticatable
         'correo',
         'contrasena',
         'rol',
+        'fisioterapeuta_id',
     ];
 
     protected $hidden = ['contrasena', 'recordar_token'];

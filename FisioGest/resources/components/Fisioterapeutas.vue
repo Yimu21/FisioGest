@@ -180,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 
 const showModal       = ref(false)
@@ -204,15 +204,26 @@ function defaultHorario() {
 
 const form = ref({ nombre: '', fechaNacimiento: '', especialidad: 'Diagnóstico', activo: true, correo: '' })
 
-const fisioterapeutas = ref([
-  { id: 1, nombre: 'Manrivel Gorado', fechaNacimiento: '1994-03-09', especialidad: 'Traumatología', activo: true,  horario: defaultHorario() },
-  { id: 2, nombre: 'Barvis Raten',    fechaNacimiento: '1996-11-07', especialidad: 'Deportiva',     activo: false, horario: defaultHorario() },
-  { id: 3, nombre: 'Bardena Drides',  fechaNacimiento: '1991-05-22', especialidad: 'Deportiva',     activo: true,  horario: defaultHorario() },
-  { id: 4, nombre: 'Marina Gomez',    fechaNacimiento: '1996-07-05', especialidad: 'Traumatología', activo: true,  horario: defaultHorario() },
-  { id: 5, nombre: 'Retmen Nones',    fechaNacimiento: '1997-12-29', especialidad: 'Deportiva',     activo: false, horario: defaultHorario() },
-])
+const fisioterapeutas = ref([])
 
 const activos = computed(() => fisioterapeutas.value.filter(f => f.activo).length)
+
+onMounted(async () => {
+  try {
+    const res  = await fetch('/api/fisioterapeutas')
+    const data = await res.json()
+    fisioterapeutas.value = data.map(f => ({
+      id:              f.fisioterapeuta_id,
+      nombre:          `${f.nombre} ${f.apellido}`.trim(),
+      fechaNacimiento: '',
+      especialidad:    f.especialidad ?? 'Diagnóstico',
+      activo:          !!f.activo,
+      horario:         defaultHorario(),
+    }))
+  } catch (e) {
+    console.error('Error al cargar fisioterapeutas:', e)
+  }
+})
 
 function openModal(item) {
   editando.value = item
@@ -227,13 +238,27 @@ function closeModal() {
   editando.value  = null
 }
 
-function guardar() {
-  if (editando.value) {
-    const idx = fisioterapeutas.value.findIndex(f => f.id === editando.value.id)
-    if (idx !== -1) fisioterapeutas.value[idx] = { ...editando.value, ...form.value }
-  } else {
-    const nextId = Math.max(...fisioterapeutas.value.map(f => f.id)) + 1
-    fisioterapeutas.value.push({ id: nextId, ...form.value })
+async function guardar() {
+  try {
+    if (editando.value) {
+      await fetch(`/api/fisioterapeutas/${editando.value.id}`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body:    JSON.stringify({ nombre: form.value.nombre, especialidad: form.value.especialidad, activo: form.value.activo }),
+      })
+      const idx = fisioterapeutas.value.findIndex(f => f.id === editando.value.id)
+      if (idx !== -1) fisioterapeutas.value[idx] = { ...fisioterapeutas.value[idx], ...form.value }
+    } else {
+      const res  = await fetch('/api/fisioterapeutas', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body:    JSON.stringify({ nombre: form.value.nombre, especialidad: form.value.especialidad, activo: form.value.activo }),
+      })
+      const data = await res.json()
+      fisioterapeutas.value.push({ id: data.id, ...form.value, horario: defaultHorario() })
+    }
+  } catch (e) {
+    console.error('Error al guardar fisioterapeuta:', e)
   }
   closeModal()
 }

@@ -198,7 +198,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
-import { citaService, pacienteService } from '@/services/api'
+import { citaService, pacienteService, fisioterapeutaService } from '@/services/api'
 
 const citas      = ref([])
 const pacientes  = ref([])
@@ -214,13 +214,7 @@ const nuevoEstado      = ref('')
 const updatingEstado   = ref(false)
 const errorEstado      = ref('')
 
-const fisioterapeutas = ref([
-  { fisioterapeuta_id: 1, nombre: 'Manrivel', apellido: 'Gorado',  especialidad: 'Traumatología' },
-  { fisioterapeuta_id: 2, nombre: 'Barvis',   apellido: 'Raten',   especialidad: 'Deportiva'     },
-  { fisioterapeuta_id: 3, nombre: 'Bardena',  apellido: 'Drides',  especialidad: 'Deportiva'     },
-  { fisioterapeuta_id: 4, nombre: 'Marina',   apellido: 'Gomez',   especialidad: 'Traumatología' },
-  { fisioterapeuta_id: 5, nombre: 'Retmen',   apellido: 'Nones',   especialidad: 'Deportiva'     },
-])
+const fisioterapeutas = ref([])
 
 const form = ref({ paciente_id: '', fisioterapeuta_id: '', fecha: '', hora: '', motivo: '' })
 
@@ -296,12 +290,14 @@ function formatFecha(fechaHora) {
 async function cargarDatos() {
   loading.value = true
   try {
-    const [citasRes, pacientesRes] = await Promise.allSettled([
+    const [citasRes, pacientesRes, fisiosRes] = await Promise.allSettled([
       citaService.getAll(),
       pacienteService.getAll(),
+      fisioterapeutaService.getAll(),
     ])
-    if (citasRes.status === 'fulfilled')     citas.value     = citasRes.value.data
-    if (pacientesRes.status === 'fulfilled') pacientes.value = pacientesRes.value.data
+    if (citasRes.status === 'fulfilled')    citas.value           = citasRes.value.data
+    if (pacientesRes.status === 'fulfilled') pacientes.value      = pacientesRes.value.data
+    if (fisiosRes.status === 'fulfilled')    fisioterapeutas.value = fisiosRes.value.data
   } finally {
     loading.value = false
   }

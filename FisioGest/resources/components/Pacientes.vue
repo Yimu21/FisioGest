@@ -191,7 +191,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
-import { pacienteService } from '@/services/api'
+import { pacienteService, fisioterapeutaService } from '@/services/api'
 
 const pacientes        = ref([])
 const loading          = ref(true)
@@ -204,13 +204,7 @@ const showDeleteModal   = ref(false)
 const pacienteAEliminar = ref(null)
 const deleting          = ref(false)
 
-const fisioterapeutas = ref([
-  { fisioterapeuta_id: 1, nombre: 'Manrivel', apellido: 'Gorado',  especialidad: 'Traumatología' },
-  { fisioterapeuta_id: 2, nombre: 'Barvis',   apellido: 'Raten',   especialidad: 'Deportiva'     },
-  { fisioterapeuta_id: 3, nombre: 'Bardena',  apellido: 'Drides',  especialidad: 'Deportiva'     },
-  { fisioterapeuta_id: 4, nombre: 'Marina',   apellido: 'Gomez',   especialidad: 'Traumatología' },
-  { fisioterapeuta_id: 5, nombre: 'Retmen',   apellido: 'Nones',   especialidad: 'Deportiva'     },
-])
+const fisioterapeutas = ref([])
 
 const form = ref({
   nombre: '', apellido: '', fecha_nacimiento: '',
@@ -284,8 +278,12 @@ function nombreFisio(id) {
 async function cargarPacientes() {
   loading.value = true
   try {
-    const res = await pacienteService.getAll()
-    pacientes.value = res.data
+    const [pacRes, fisioRes] = await Promise.allSettled([
+      pacienteService.getAll(),
+      fisioterapeutaService.getAll(),
+    ])
+    if (pacRes.status === 'fulfilled')  pacientes.value      = pacRes.value.data
+    if (fisioRes.status === 'fulfilled') fisioterapeutas.value = fisioRes.value.data
   } catch {
     pacientes.value = []
   } finally {
