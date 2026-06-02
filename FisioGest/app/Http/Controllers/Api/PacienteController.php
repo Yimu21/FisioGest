@@ -20,7 +20,7 @@ class PacienteController extends Controller
     {
         DB::table('pacientes')->insert([
             'nombre' => $request->nombre,
-            'usuario_id' => 1 // Amárralo al usuario 1 obligatorio para que SQLite no tire el error 23000
+            'usuario_id' => 1 // Amárralo al usuario 1 obligatorio para que la DB no tire el error 23000
         ]);
 
         return response()->json(['success' => true, 'message' => 'Paciente guardado con éxito']);
