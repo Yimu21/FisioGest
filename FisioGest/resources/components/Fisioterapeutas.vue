@@ -33,6 +33,7 @@
               <th>Foto</th>
               <th>Nombre Completo</th>
               <th>Especialidad</th>
+              <th>Teléfono</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -49,20 +50,22 @@
               </td>
               <td class="td-nombre">{{ f.nombre }}</td>
               <td class="td-esp">{{ f.especialidad }}</td>
+              <td class="td-tel">{{ f.telefono || '—' }}</td>
               <td>
                 <label class="toggle-label">
-                  <input type="checkbox" v-model="f.activo" />
+                  <input type="checkbox" v-model="f.activo" @change="toggleActivo(f)" />
                   <span class="toggle-track">
                     <span class="toggle-thumb"></span>
                   </span>
                   <span class="toggle-text" :class="f.activo ? 'on' : 'off'">
-                    {{ f.activo ? 'Activo' : 'Inactiva' }}
+                    {{ f.activo ? 'Activo' : 'Inactivo' }}
                   </span>
                 </label>
               </td>
               <td class="td-actions">
                 <button class="btn-editar" @click="openModal(f)">Editar</button>
                 <button class="btn-horario" @click="openEditHorario(f)">Horario</button>
+                <button class="btn-eliminar" @click="eliminar(f)">Eliminar</button>
               </td>
             </tr>
           </tbody>
@@ -90,8 +93,8 @@
                 <input v-model="form.nombre" type="text" placeholder="Nombre completo" required />
               </div>
               <div class="form-group">
-                <label>Fecha de Nacimiento</label>
-                <input v-model="form.fechaNacimiento" type="date" required />
+                <label>Teléfono</label>
+                <input v-model="form.telefono" type="tel" placeholder="Ej: 7890-1234" />
               </div>
             </div>
 
@@ -111,14 +114,9 @@
                 <label>Estado</label>
                 <select v-model="form.activo">
                   <option :value="true">Activo</option>
-                  <option :value="false">Inactiva</option>
+                  <option :value="false">Inactivo</option>
                 </select>
               </div>
-            </div>
-
-            <div class="form-group">
-              <label>Correo electrónico</label>
-              <input v-model="form.correo" type="email" placeholder="correo@ejemplo.com" />
             </div>
 
             <div class="modal-actions">
@@ -176,6 +174,13 @@
       </div>
     </Teleport>
 
+    <!-- ── Toast ── -->
+    <Teleport to="body">
+      <div class="toast" :class="toast.type" v-if="toast.visible">
+        {{ toast.msg }}
+      </div>
+    </Teleport>
+
   </AppLayout>
 </template>
 
@@ -188,6 +193,8 @@ const showEditHorario = ref(false)
 const editando        = ref(null)
 const horarioFisio    = ref(null)
 const horarioForm     = ref({})
+const fisioterapeutas = ref([])
+const toast           = ref({ visible: false, msg: '', type: 'success' })
 
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
@@ -202,34 +209,38 @@ function defaultHorario() {
   }
 }
 
-const form = ref({ nombre: '', fechaNacimiento: '', especialidad: 'Diagnóstico', activo: true, correo: '' })
-
-const fisioterapeutas = ref([])
+const form = ref({ nombre: '', telefono: '', especialidad: 'Diagnóstico', activo: true })
 
 const activos = computed(() => fisioterapeutas.value.filter(f => f.activo).length)
+
+function showToast(msg, type = 'success') {
+  toast.value = { visible: true, msg, type }
+  setTimeout(() => { toast.value.visible = false }, 3000)
+}
 
 onMounted(async () => {
   try {
     const res  = await fetch('/api/fisioterapeutas')
     const data = await res.json()
     fisioterapeutas.value = data.map(f => ({
-      id:              f.fisioterapeuta_id,
-      nombre:          `${f.nombre} ${f.apellido}`.trim(),
-      fechaNacimiento: '',
-      especialidad:    f.especialidad ?? 'Diagnóstico',
-      activo:          !!f.activo,
-      horario:         defaultHorario(),
+      id:           f.fisioterapeuta_id,
+      nombre:       `${f.nombre} ${f.apellido}`.trim(),
+      especialidad: f.especialidad ?? 'Diagnóstico',
+      telefono:     f.telefono ?? '',
+      activo:       !!f.activo,
+      horario:      f.horario ?? defaultHorario(),
     }))
   } catch (e) {
     console.error('Error al cargar fisioterapeutas:', e)
+    showToast('Error al cargar fisioterapeutas', 'error')
   }
 })
 
 function openModal(item) {
   editando.value = item
   form.value = item
-    ? { nombre: item.nombre, fechaNacimiento: item.fechaNacimiento, especialidad: item.especialidad, activo: item.activo, correo: item.correo ?? '' }
-    : { nombre: '', fechaNacimiento: '', especialidad: 'Diagnóstico', activo: true, correo: '' }
+    ? { nombre: item.nombre, telefono: item.telefono ?? '', especialidad: item.especialidad, activo: item.activo }
+    : { nombre: '', telefono: '', especialidad: 'Diagnóstico', activo: true }
   showModal.value = true
 }
 
@@ -240,27 +251,67 @@ function closeModal() {
 
 async function guardar() {
   try {
+    const payload = {
+      nombre:       form.value.nombre,
+      especialidad: form.value.especialidad,
+      telefono:     form.value.telefono,
+      activo:       form.value.activo,
+    }
+
     if (editando.value) {
       await fetch(`/api/fisioterapeutas/${editando.value.id}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body:    JSON.stringify({ nombre: form.value.nombre, especialidad: form.value.especialidad, activo: form.value.activo }),
+        body:    JSON.stringify(payload),
       })
       const idx = fisioterapeutas.value.findIndex(f => f.id === editando.value.id)
       if (idx !== -1) fisioterapeutas.value[idx] = { ...fisioterapeutas.value[idx], ...form.value }
+      showToast('Fisioterapeuta actualizado correctamente')
     } else {
       const res  = await fetch('/api/fisioterapeutas', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body:    JSON.stringify({ nombre: form.value.nombre, especialidad: form.value.especialidad, activo: form.value.activo }),
+        body:    JSON.stringify(payload),
       })
       const data = await res.json()
       fisioterapeutas.value.push({ id: data.id, ...form.value, horario: defaultHorario() })
+      showToast('Fisioterapeuta registrado correctamente')
     }
   } catch (e) {
     console.error('Error al guardar fisioterapeuta:', e)
+    showToast('Error al guardar', 'error')
   }
   closeModal()
+}
+
+async function toggleActivo(f) {
+  try {
+    await fetch(`/api/fisioterapeutas/${f.id}/activo`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify({ activo: f.activo }),
+    })
+    showToast(`Estado actualizado: ${f.activo ? 'Activo' : 'Inactivo'}`)
+  } catch (e) {
+    f.activo = !f.activo
+    console.error('Error al actualizar estado:', e)
+    showToast('Error al actualizar estado', 'error')
+  }
+}
+
+async function eliminar(f) {
+  if (!confirm(`¿Eliminar a ${f.nombre}? Esta acción no se puede deshacer.`)) return
+  try {
+    await fetch(`/api/fisioterapeutas/${f.id}`, {
+      method:  'DELETE',
+      headers: { 'Accept': 'application/json' },
+    })
+    fisioterapeutas.value = fisioterapeutas.value.filter(x => x.id !== f.id)
+    showToast('Fisioterapeuta eliminado')
+  } catch (e) {
+    console.error('Error al eliminar:', e)
+    showToast('Error al eliminar', 'error')
+  }
 }
 
 function openEditHorario(f) {
@@ -274,10 +325,21 @@ function closeEditHorario() {
   horarioFisio.value    = null
 }
 
-function guardarHorario() {
-  const idx = fisioterapeutas.value.findIndex(f => f.id === horarioFisio.value.id)
-  if (idx !== -1) fisioterapeutas.value[idx].horario = { ...horarioForm.value }
-  closeEditHorario()
+async function guardarHorario() {
+  try {
+    await fetch(`/api/fisioterapeutas/${horarioFisio.value.id}/horario`, {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify({ horario: horarioForm.value }),
+    })
+    const idx = fisioterapeutas.value.findIndex(f => f.id === horarioFisio.value.id)
+    if (idx !== -1) fisioterapeutas.value[idx].horario = { ...horarioForm.value }
+    closeEditHorario()
+    showToast('Horario guardado')
+  } catch (e) {
+    console.error('Error al guardar horario:', e)
+    showToast('Error al guardar horario', 'error')
+  }
 }
 </script>
 
@@ -740,5 +802,56 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   color: #6b7280;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* ── Teléfono en tabla ── */
+.td-tel {
+  color: #A9AFB2;
+  font-size: 0.83rem;
+}
+
+/* ── Botón eliminar ── */
+.btn-eliminar {
+  background: rgba(220,38,38,0.12);
+  color: #f87171;
+  border: 1px solid rgba(220,38,38,0.25);
+  border-radius: 5px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-eliminar:hover {
+  background: rgba(220,38,38,0.22);
+  border-color: rgba(220,38,38,0.5);
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  z-index: 9999;
+  animation: slideIn 0.2s ease;
+}
+.toast.success {
+  background: #074434;
+  color: #4ade80;
+  border: 1px solid #0a5c46;
+}
+.toast.error {
+  background: rgba(220,38,38,0.15);
+  color: #f87171;
+  border: 1px solid rgba(220,38,38,0.35);
+}
+@keyframes slideIn {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 </style>

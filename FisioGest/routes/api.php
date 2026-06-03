@@ -23,8 +23,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/fisio/mis-pacientes', function (Request $request) {
         $fisioId = $request->user()->fisioterapeuta_id;
         if (!$fisioId) return response()->json([]);
+        $pacienteIds = DB::table('citas')
+            ->where('fisioterapeuta_id', $fisioId)
+            ->pluck('paciente_id')
+            ->unique();
         return response()->json(
-            DB::table('pacientes')->where('fisioterapeuta_id', $fisioId)->get()
+            DB::table('pacientes')->whereIn('paciente_id', $pacienteIds)->get()
         );
     });
 
@@ -35,13 +39,21 @@ Route::middleware('auth:sanctum')->group(function () {
             DB::table('citas')->where('fisioterapeuta_id', $fisioId)->get()
         );
     });
-});
 
-// =========================================================================
-// 1. FISIOTERAPEUTAS (desde BD real)
-// =========================================================================
-Route::get('/fisioterapeutas', function () {
-    return response()->json(DB::table('fisioterapeutas')->get());
+    Route::get('/fisio/mis-asignaciones', function (Request $request) {
+        $fisioId = $request->user()->fisioterapeuta_id;
+        if (!$fisioId) return response()->json([]);
+        $pacienteIds = DB::table('citas')
+            ->where('fisioterapeuta_id', $fisioId)
+            ->pluck('paciente_id')
+            ->unique();
+        return response()->json(
+            DB::table('asignaciones_equipo')
+                ->whereIn('paciente_id', $pacienteIds)
+                ->where('estado', 'activo')
+                ->get()
+        );
+    });
 });
 
 // =========================================================================
@@ -49,6 +61,55 @@ Route::get('/fisioterapeutas', function () {
 // =========================================================================
 Route::get('/inventario', [\App\Http\Controllers\Api\InventarioController::class, 'index']);
 Route::post('/inventario', [\App\Http\Controllers\Api\InventarioController::class, 'store']);
+
+Route::put('/inventario/{id}', function (Request $request, $id) {
+    DB::table('inventario')->where('id_inventario', $id)->update([
+        'nombre'     => $request->nombre,
+        'tipo'       => $request->tipo,
+        'marca'      => $request->marca,
+        'modelo'     => $request->modelo,
+        'estado'     => $request->estado,
+        'cantidad'   => $request->cantidad,
+        'updated_at' => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Equipo actualizado.']);
+});
+
+Route::delete('/inventario/{id}', function ($id) {
+    DB::table('inventario')->where('id_inventario', $id)->delete();
+    return response()->json(['success' => true, 'message' => 'Equipo eliminado.']);
+});
+
+// =========================================================================
+// 2b. MÓDULO DE ASIGNACIONES DE EQUIPO
+// =========================================================================
+Route::get('/asignaciones', function () {
+    return response()->json(
+        DB::table('asignaciones_equipo')->where('estado', 'activo')->get()
+    );
+});
+
+Route::post('/asignaciones', function (Request $request) {
+    $id = DB::table('asignaciones_equipo')->insertGetId([
+        'paciente_id'      => $request->paciente_id,
+        'inventario_id'    => $request->inventario_id,
+        'fecha_asignacion' => now()->toDateString(),
+        'estado'           => 'activo',
+        'notas'            => $request->notas ?? null,
+        'created_at'       => now(),
+        'updated_at'       => now(),
+    ]);
+    return response()->json(['success' => true, 'id' => $id, 'message' => 'Equipo asignado correctamente.'], 201);
+});
+
+Route::patch('/asignaciones/{id}/liberar', function (Request $request, $id) {
+    DB::table('asignaciones_equipo')->where('id_asignaciones', $id)->update([
+        'estado'           => 'devuelto',
+        'fecha_devolucion' => now()->toDateString(),
+        'updated_at'       => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Equipo liberado correctamente.']);
+});
 
 
 // =========================================================================
@@ -161,20 +222,25 @@ Route::patch('/citas/{id}', function (Request $request, $id) {
 // =========================================================================
 
 Route::get('/fisioterapeutas', function () {
-    $fisioterapeutas = DB::table('fisioterapeutas')->get();
+    $fisioterapeutas = DB::table('fisioterapeutas')->get()->map(function ($f) {
+        $raw = $f->horario ?? null;
+        $f->horario = $raw ? json_decode($raw, true) : null;
+        return $f;
+    });
     return response()->json($fisioterapeutas);
 });
 
 Route::post('/fisioterapeutas', function (Request $request) {
-    $partes    = explode(' ', trim($request->nombre), 2);
-    $nombre    = $partes[0];
-    $apellido  = $partes[1] ?? '';
+    $partes   = explode(' ', trim($request->nombre), 2);
+    $nombre   = $partes[0];
+    $apellido = $partes[1] ?? '';
 
     $id = DB::table('fisioterapeutas')->insertGetId([
         'usuario_id'   => 1,
         'nombre'       => $nombre,
         'apellido'     => $apellido,
         'especialidad' => $request->especialidad,
+        'telefono'     => $request->telefono,
         'activo'       => $request->activo ? 1 : 0,
         'created_at'   => now(),
         'updated_at'   => now(),
@@ -192,9 +258,31 @@ Route::put('/fisioterapeutas/{id}', function (Request $request, $id) {
         'nombre'       => $nombre,
         'apellido'     => $apellido,
         'especialidad' => $request->especialidad,
+        'telefono'     => $request->telefono,
         'activo'       => $request->activo ? 1 : 0,
         'updated_at'   => now(),
     ]);
 
     return response()->json(['success' => true, 'message' => 'Fisioterapeuta actualizado.']);
+});
+
+Route::patch('/fisioterapeutas/{id}/activo', function (Request $request, $id) {
+    DB::table('fisioterapeutas')->where('fisioterapeuta_id', $id)->update([
+        'activo'     => $request->activo ? 1 : 0,
+        'updated_at' => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Estado actualizado.']);
+});
+
+Route::delete('/fisioterapeutas/{id}', function ($id) {
+    DB::table('fisioterapeutas')->where('fisioterapeuta_id', $id)->delete();
+    return response()->json(['success' => true, 'message' => 'Fisioterapeuta eliminado.']);
+});
+
+Route::put('/fisioterapeutas/{id}/horario', function (Request $request, $id) {
+    DB::table('fisioterapeutas')->where('fisioterapeuta_id', $id)->update([
+        'horario'    => json_encode($request->horario),
+        'updated_at' => now(),
+    ]);
+    return response()->json(['success' => true, 'message' => 'Horario guardado.']);
 });

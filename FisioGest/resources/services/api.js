@@ -57,8 +57,10 @@ export const pacienteService = {
 }
 
 export const inventarioService = {
-  getAll:  () => api.get('/inventario'),
-  create:  (data) => api.post('/inventario', data),
+  getAll:  ()         => api.get('/inventario'),
+  create:  (data)     => api.post('/inventario', data),
+  update:  (id, data) => api.put(`/inventario/${id}`, data),
+  delete:  (id)       => api.delete(`/inventario/${id}`),
 }
 
 export const fisioterapeutaService = {
@@ -67,6 +69,13 @@ export const fisioterapeutaService = {
 
 // Endpoints exclusivos del fisioterapeuta autenticado (filtrados en backend)
 export const fisioService = {
-  misPacientes: () => api.get('/fisio/mis-pacientes'),
-  misCitas:     () => api.get('/fisio/mis-citas'),
+  misPacientes:    () => api.get('/fisio/mis-pacientes'),
+  misCitas:        () => api.get('/fisio/mis-citas'),
+  misAsignaciones: () => api.get('/fisio/mis-asignaciones'),
+}
+
+export const asignacionesService = {
+  getAll:  ()     => api.get('/asignaciones'),
+  create:  (data) => api.post('/asignaciones', data),
+  liberar: (id)   => api.patch(`/asignaciones/${id}/liberar`),
 }

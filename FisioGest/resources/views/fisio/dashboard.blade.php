@@ -43,7 +43,7 @@
         {{-- Header --}}
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:28px;">
             <div>
-                <h1 style="margin:0;font-size:22px;font-weight:700;color:#fff;">Fisioterapeuta Dashboard <span style="color:#4ade80;">(May 2026)</span></h1>
+                <h1 style="margin:0;font-size:22px;font-weight:700;color:#fff;">Fisioterapeuta Dashboard <span style="color:#4ade80;">({{ $startOfWeek->format('M Y') }})</span></h1>
                 <p style="margin:4px 0 0;font-size:13px;color:#a1a1aa;">Nombre del Fisioterapeuta: <strong style="color:#e4e4e7;">Dr. Alejandro Vargas</strong></p>
             </div>
             <button onclick="document.getElementById('modalNuevaSesion').style.display='flex'" style="background:#22c55e;color:#000;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px;">+ Nueva Sesión</button>
@@ -53,10 +53,10 @@
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;">
             @php
                 $stats = [
-                    ['label' => 'Citas esta semana', 'value' => '12', 'icon' => '📅', 'color' => '#4ade80'],
-                    ['label' => 'Pacientes activos', 'value' => '8',  'icon' => '👥', 'color' => '#38bdf8'],
-                    ['label' => 'Sesiones completadas', 'value' => '5', 'icon' => '✅', 'color' => '#a78bfa'],
-                    ['label' => 'Pendientes hoy', 'value' => '3', 'icon' => '⏳', 'color' => '#fbbf24'],
+                    ['label' => 'Citas esta semana',   'value' => (string) $citas->count(),                                 'icon' => '📅', 'color' => '#4ade80'],
+                    ['label' => 'Pacientes activos',    'value' => (string) $citas->pluck('paciente_id')->unique()->count(), 'icon' => '👥', 'color' => '#38bdf8'],
+                    ['label' => 'Sesiones completadas', 'value' => (string) $citas->where('estado', 'atendida')->count(),   'icon' => '✅', 'color' => '#a78bfa'],
+                    ['label' => 'Pendientes hoy',       'value' => (string) $pendientesHoy,                                  'icon' => '⏳', 'color' => '#fbbf24'],
                 ];
             @endphp
             @foreach($stats as $s)
@@ -73,11 +73,11 @@
             <div style="padding:16px 20px;border-bottom:1px solid #27272a;display:flex;align-items:center;justify-content:space-between;">
                 <div>
                     <h2 style="margin:0;font-size:16px;font-weight:600;color:#e4e4e7;">Weekly Agenda</h2>
-                    <p style="margin:2px 0 0;font-size:12px;color:#71717a;">Week of May 25–31, 2026</p>
+                    <p style="margin:2px 0 0;font-size:12px;color:#71717a;">Semana del {{ $startOfWeek->format('d M') }} al {{ $startOfWeek->copy()->addDays(6)->format('d M, Y') }}</p>
                 </div>
                 <div style="display:flex;gap:10px;">
-                    <button style="background:#27272a;border:1px solid #3f3f46;color:#a1a1aa;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">‹ Anterior</button>
-                    <button style="background:#27272a;border:1px solid #3f3f46;color:#a1a1aa;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">Siguiente ›</button>
+                    <a href="/fisio/dashboard?week={{ $weekOffset - 1 }}" style="background:#27272a;border:1px solid #3f3f46;color:#a1a1aa;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;">‹ Anterior</a>
+                    <a href="/fisio/dashboard?week={{ $weekOffset + 1 }}" style="background:#27272a;border:1px solid #3f3f46;color:#a1a1aa;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;">Siguiente ›</a>
                 </div>
             </div>
 
@@ -87,54 +87,46 @@
                         <tr style="background:#111111;">
                             <th style="width:62px;padding:10px 6px;font-size:11px;color:#71717a;text-align:center;border-right:1px solid #27272a;border-bottom:1px solid #27272a;font-weight:500;">Hora</th>
                             @php
-                                $days = [
-                                    ['label' => 'Lun 25', 'key' => 'mon'],
-                                    ['label' => 'Mar 26', 'key' => 'tue'],
-                                    ['label' => 'Mié 27', 'key' => 'wed'],
-                                    ['label' => 'Jue 28', 'key' => 'thu'],
-                                    ['label' => 'Vie 29', 'key' => 'fri'],
-                                    ['label' => 'Sáb 30', 'key' => 'sat'],
-                                    ['label' => 'Dom 31', 'key' => 'sun'],
+                            $dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+                            $dayKeys   = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+                            $days = [];
+                            for ($i = 0; $i < 7; $i++) {
+                                $d = $startOfWeek->copy()->addDays($i);
+                                $days[] = ['label' => $dayLabels[$i] . ' ' . $d->format('d'), 'key' => $dayKeys[$i]];
+                            }
+
+                            $estadoColor = ['programada'=>'blue','atendida'=>'green','cancelada'=>'red','reprogramada'=>'yellow'];
+                            $estadoLabel = ['programada'=>'Sesión de Terapia','atendida'=>'Completada','cancelada'=>'Cancelada','reprogramada'=>'Reprogramada'];
+
+                            $agenda = array_fill_keys($dayKeys, []);
+                            foreach ($citas as $cita) {
+                                $dt  = \Carbon\Carbon::parse($cita->fecha_hora);
+                                $idx = $dt->dayOfWeekIso - 1;
+                                if ($idx < 0 || $idx > 6) continue;
+                                $key = $dayKeys[$idx];
+                                $min = (int) $dt->format('i');
+                                $slot = $dt->format('H') . ':' . ($min < 30 ? '00' : '30');
+                                $agenda[$key][$slot][] = [
+                                    'patient' => $cita->nombre . ' ' . $cita->apellido,
+                                    'type'    => $estadoLabel[$cita->estado] ?? ucfirst($cita->estado),
+                                    'color'   => $estadoColor[$cita->estado] ?? 'blue',
+                                    'time'    => $dt->format('H:i'),
                                 ];
-                                $agenda = [
-                                    'mon' => [
-                                        '09:00' => [['patient'=>'Elena Rodriguez','type'=>'Sesión de Terapia','color'=>'blue']],
-                                        '11:00' => [['patient'=>'Carlos Pérez','type'=>'Sesión de Terapia','color'=>'blue']],
-                                        '13:30' => [['patient'=>'Elena Rodriguez','type'=>'Pending','color'=>'yellow']],
-                                    ],
-                                    'tue' => [
-                                        '10:00' => [['patient'=>'Carlos Pérez','type'=>'Pending','color'=>'yellow']],
-                                        '12:00' => [['patient'=>'Diana Torres','type'=>'Sesión de Terapia','color'=>'blue']],
-                                        '14:30' => [['patient'=>'Elena Rodriguez','type'=>'Sesión de Terapia','color'=>'blue']],
-                                    ],
-                                    'wed' => [
-                                        '09:00' => [['patient'=>'Carlos Pérez','type'=>'Pending','color'=>'yellow']],
-                                        '10:30' => [['patient'=>'Diana Torres','type'=>'Sesión de Terapia','color'=>'blue']],
-                                        '13:00' => [['patient'=>'Elena Rodriguez','type'=>'Completada','color'=>'green']],
-                                        '15:00' => [['patient'=>'Diana Torres','type'=>'Pending','color'=>'yellow']],
-                                    ],
-                                    'thu' => [
-                                        '11:00' => [['patient'=>'Carlos Pérez','type'=>'Sesión de Terapia','color'=>'blue']],
-                                        '13:30' => [['patient'=>'Diana Torres','type'=>'Completada','color'=>'green']],
-                                    ],
-                                    'fri' => [
-                                        '10:00' => [['patient'=>'Elena Rodriguez','type'=>'Cancelada','color'=>'red']],
-                                        '12:00' => [['patient'=>'Carlos Pérez','type'=>'Sesión de Terapia','color'=>'blue']],
-                                        '14:00' => [['patient'=>'Diana Torres','type'=>'Pending','color'=>'yellow']],
-                                    ],
-                                    'sat' => [],
-                                    'sun' => [],
-                                ];
-                                $colorMap = [
-                                    'blue'   => ['bg'=>'#1e3a8a','border'=>'#3b82f6','text'=>'#93c5fd','sub'=>'#7dd3fc'],
-                                    'yellow' => ['bg'=>'#78350f','border'=>'#f59e0b','text'=>'#fbbf24','sub'=>'#fde68a'],
-                                    'green'  => ['bg'=>'#14532d','border'=>'#22c55e','text'=>'#4ade80','sub'=>'#86efac'],
-                                    'red'    => ['bg'=>'#7f1d1d','border'=>'#dc2626','text'=>'#fca5a5','sub'=>'#fecaca'],
-                                ];
-                                $slots = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'];
-                            @endphp
+                            }
+
+                            $colorMap = [
+                                'blue'   => ['bg'=>'#1e3a8a','border'=>'#3b82f6','text'=>'#93c5fd','sub'=>'#7dd3fc'],
+                                'yellow' => ['bg'=>'#78350f','border'=>'#f59e0b','text'=>'#fbbf24','sub'=>'#fde68a'],
+                                'green'  => ['bg'=>'#14532d','border'=>'#22c55e','text'=>'#4ade80','sub'=>'#86efac'],
+                                'red'    => ['bg'=>'#7f1d1d','border'=>'#dc2626','text'=>'#fca5a5','sub'=>'#fecaca'],
+                            ];
+                            $slots = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30'];
+                        @endphp
                             @foreach($days as $d)
-                                <th style="padding:10px 6px;font-size:12px;color:#a1a1aa;text-align:center;border-bottom:1px solid #27272a;border-right:1px solid #27272a;font-weight:500;">{{ $d['label'] }}</th>
+                                @php $isToday = ($d['label'] === $dayLabels[array_search($d['key'], $dayKeys)] . ' ' . now()->format('d')) && $startOfWeek->copy()->addDays(array_search($d['key'], $dayKeys))->isSameDay(now()); @endphp
+                                <th style="padding:10px 6px;font-size:12px;text-align:center;border-bottom:1px solid #27272a;border-right:1px solid #27272a;font-weight:600;{{ $isToday ? 'color:#4ade80;background:#0d2d1a;' : 'color:#a1a1aa;' }}">
+                                    {{ $d['label'] }}{{ $isToday ? ' ●' : '' }}
+                                </th>
                             @endforeach
                         </tr>
                     </thead>
@@ -150,7 +142,7 @@
                                                 @php $c = $colorMap[$appt['color']]; @endphp
                                                 <div style="background:{{ $c['bg'] }};border-left:3px solid {{ $c['border'] }};border-radius:3px;padding:3px 5px;margin-bottom:2px;cursor:pointer;">
                                                     <p style="margin:0;font-weight:600;color:{{ $c['text'] }};font-size:10px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ $appt['patient'] }}</p>
-                                                    <p style="margin:0;color:{{ $c['sub'] }};font-size:9px;line-height:1.3;">{{ $appt['type'] }}</p>
+                                                    <p style="margin:0;color:{{ $c['sub'] }};font-size:9px;line-height:1.3;">{{ $appt['time'] }} · {{ $appt['type'] }}</p>
                                                 </div>
                                             @endforeach
                                         @endif
@@ -161,12 +153,18 @@
                     </tbody>
                 </table>
             </div>
+            @if($citas->isEmpty())
+            <div style="text-align:center;padding:40px 20px;color:#52525b;">
+                <p style="font-size:32px;margin:0 0 10px;">📅</p>
+                <p style="font-size:14px;margin:0;color:#71717a;">No hay citas programadas para esta semana</p>
+            </div>
+            @endif
         </div>
 
         {{-- Leyenda --}}
         <div style="margin-top:14px;display:flex;gap:18px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#71717a;"><span style="width:12px;height:12px;background:#1e3a8a;border-left:3px solid #3b82f6;border-radius:2px;display:inline-block;"></span> Sesión de Terapia</div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#71717a;"><span style="width:12px;height:12px;background:#78350f;border-left:3px solid #f59e0b;border-radius:2px;display:inline-block;"></span> Pending</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#71717a;"><span style="width:12px;height:12px;background:#78350f;border-left:3px solid #f59e0b;border-radius:2px;display:inline-block;"></span> Reprogramada</div>
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#71717a;"><span style="width:12px;height:12px;background:#14532d;border-left:3px solid #22c55e;border-radius:2px;display:inline-block;"></span> Completada</div>
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#71717a;"><span style="width:12px;height:12px;background:#7f1d1d;border-left:3px solid #dc2626;border-radius:2px;display:inline-block;"></span> Cancelada</div>
         </div>

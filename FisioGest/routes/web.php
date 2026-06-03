@@ -85,9 +85,29 @@ Route::post('/citas', function (Request $request) {
 // =========================================================================
 // ─── VISTA DE FISIOTERAPEUTA ──────────────────────────────────────────────
 
-Route::get('/fisio/dashboard', function () {
+Route::get('/fisio/dashboard', function (Request $request) {
     $pacientes = DB::table('pacientes')->get();
-    return view('fisio.dashboard', compact('pacientes'));
+
+    $weekOffset  = (int) $request->query('week', 0);
+    $startOfWeek = \Carbon\Carbon::now()->startOfWeek(\Carbon\Carbon::MONDAY)->addWeeks($weekOffset);
+    $endOfWeek   = $startOfWeek->copy()->endOfWeek(\Carbon\Carbon::SUNDAY);
+
+    $citas = DB::table('citas')
+        ->join('pacientes', 'citas.paciente_id', '=', 'pacientes.paciente_id')
+        ->whereBetween('fecha_hora', [
+            $startOfWeek->format('Y-m-d 00:00:00'),
+            $endOfWeek->format('Y-m-d 23:59:59'),
+        ])
+        ->select('citas.cita_id', 'citas.paciente_id', 'citas.fecha_hora', 'citas.motivo', 'citas.estado', 'pacientes.nombre', 'pacientes.apellido')
+        ->orderBy('fecha_hora')
+        ->get();
+
+    $pendientesHoy = DB::table('citas')
+        ->whereDate('fecha_hora', \Carbon\Carbon::today())
+        ->where('estado', 'programada')
+        ->count();
+
+    return view('fisio.dashboard', compact('pacientes', 'citas', 'startOfWeek', 'weekOffset', 'pendientesHoy'));
 })->name('fisio.dashboard');
 
 Route::get('/fisio/pacientes', function (Request $request) {
