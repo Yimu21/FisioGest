@@ -14,9 +14,10 @@ class DatabaseSeeder extends Seeder
         // Comentamos o eliminamos la línea de User::factory() que causa el error.
         // Solo dejamos el llamado a tu seeder real de inventario:
         $this->call([
-            UsuarioSeeder::class,       // 1° — usuarios base (admin + fisioterapeutas)
-            FisioterapeutaSeeder::class, // 2° — fisioterapeutas (dependen de usuarios)
-            InventarioSeeder::class,     // 3° — inventario
+            UsuarioSeeder::class,        // 1° — usuarios base (admin + fisioterapeutas)
+            FisioterapeutaSeeder::class,  // 2° — fisioterapeutas (dependen de usuarios)
+            InventarioSeeder::class,      // 3° — inventario
+            ConfiguracionSeeder::class,   // 4° — configuración del sistema
         ]);
     }
 }

@@ -27,7 +27,7 @@
           <option value="">Todos los estados</option>
           <option value="disponible">Disponible</option>
           <option value="baja">Stock Bajo</option>
-          <option value="en_uso">En Uso</option>
+          <option value="no_disponible">No Disponible</option>
           <option value="mantenimiento">Mantenimiento</option>
         </select>
       </div>
@@ -50,8 +50,8 @@
               <td class="td-bold">{{ item.nombre }}</td>
               <td class="td-gris">{{ item.tipo ?? '—' }}</td>
               <td>
-                <span class="estado-pill" :class="estadoClass(item.estado)">
-                  <span class="dot"></span>{{ item.estado ?? 'N/A' }}
+                <span class="estado-pill" :class="estadoClass(estadoCalculado(item))">
+                  <span class="dot"></span>{{ etiquetaEstado(estadoCalculado(item)) }}
                 </span>
               </td>
               <td class="col-centro td-bold" :class="disponiblesClass(disponiblesDeItem(item), item.cantidad)">
@@ -126,8 +126,10 @@
                     v-for="item in items"
                     :key="item.id_inventario"
                     :value="item.id_inventario"
+                    :disabled="disponiblesDeItem(item) === 0"
+                    :class="{ 'opt-sin-stock': disponiblesDeItem(item) === 0 }"
                   >
-                    {{ item.nombre }}
+                    {{ item.nombre }}{{ disponiblesDeItem(item) === 0 ? ' (Sin stock)' : '' }}
                   </option>
                 </select>
               </td>
@@ -142,12 +144,13 @@
                     {{ p.nombre }} {{ p.apellido }}
                   </option>
                 </select>
+                <span v-if="sinStock" class="aviso-sin-stock">⚠ Este equipo no tiene unidades disponibles.</span>
               </td>
               <td class="td-gris td-hoy">Hoy · {{ formatFecha(hoy) }}</td>
               <td class="col-centro">
                 <button
                   class="btn-asignar"
-                  :disabled="guardando || !nuevaInventario_id || !nuevaPaciente_id"
+                  :disabled="guardando || !nuevaInventario_id || !nuevaPaciente_id || sinStock"
                   @click="asignar"
                 >
                   + Asignar
@@ -190,9 +193,16 @@ let toastTimer = null
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 
+// Verifica si el equipo seleccionado tiene stock = 0
+const sinStock = computed(() => {
+  if (!nuevaInventario_id.value) return false
+  const item = items.value.find(i => Number(i.id_inventario) === Number(nuevaInventario_id.value))
+  return item ? disponiblesDeItem(item) === 0 : false
+})
+
 const itemsFiltrados = computed(() => {
   if (!filtroEstado.value) return items.value
-  return items.value.filter(i => i.estado === filtroEstado.value)
+  return items.value.filter(i => estadoCalculado(i) === filtroEstado.value)
 })
 
 const asignacionesEnriquecidas = computed(() =>
@@ -225,15 +235,28 @@ function disponiblesDeItem(item) {
 }
 
 function disponiblesClass(disponibles, total) {
-  if (disponibles === 0)                            return 'disp-agotado'
-  if (disponibles <= Math.ceil((total ?? 0) * 0.3)) return 'disp-bajo'
+  if (disponibles === 0) return 'disp-agotado'
+  if (disponibles < 5)   return 'disp-bajo'
   return 'disp-ok'
 }
 
+// Estado calculado desde stock real (igual que en Inventario admin)
+function estadoCalculado(item) {
+  if (item.estado === 'mantenimiento') return 'mantenimiento'
+  const disp  = disponiblesDeItem(item)
+  const total = item.cantidad ?? 0
+  if (disp === 0)              return 'no_disponible'
+  if (disp < 5)                return 'baja'
+  return 'disponible'
+}
+
+const etiquetasEstado = { disponible: 'Disponible', no_disponible: 'No Disponible', mantenimiento: 'Mantenimiento', baja: 'Stock Bajo' }
+function etiquetaEstado(val) { return etiquetasEstado[val] ?? val }
+
 function estadoClass(estado) {
-  if (estado === 'disponible')   return 'green'
-  if (estado === 'baja')         return 'yellow'
-  if (estado === 'en_uso')       return 'blue'
+  if (estado === 'disponible')    return 'green'
+  if (estado === 'baja')          return 'yellow'
+  if (estado === 'no_disponible') return 'red'
   if (estado === 'mantenimiento') return 'gray'
   return 'gray'
 }
@@ -263,7 +286,7 @@ async function asignar() {
     })
     nuevaInventario_id.value = ''
     nuevaPaciente_id.value   = ''
-    await cargarAsignaciones()
+    await refrescarTodo()
     mostrarToast('Equipo asignado correctamente.', 'success')
   } catch {
     mostrarToast('No se pudo asignar el equipo. Intenta de nuevo.', 'error')
@@ -276,7 +299,7 @@ async function liberar(asignacion) {
   guardando.value = true
   try {
     await asignacionesService.liberar(asignacion.id_asignaciones)
-    await cargarAsignaciones()
+    await refrescarTodo()
     mostrarToast('Equipo liberado correctamente.', 'success')
   } catch {
     mostrarToast('No se pudo liberar el equipo. Intenta de nuevo.', 'error')
@@ -286,6 +309,18 @@ async function liberar(asignacion) {
 }
 
 // ── Carga de datos ────────────────────────────────────────────────────────────
+
+// Refresca inventario + asignaciones sin spinner (para usar después de asignar/liberar)
+async function refrescarTodo() {
+  const [ir, ar, todasR] = await Promise.allSettled([
+    inventarioService.getAll(),
+    fisioService.misAsignaciones(),
+    asignacionesService.getAll(),
+  ])
+  if (ir.status    === 'fulfilled') items.value             = ir.value.data
+  if (ar.status    === 'fulfilled') asignaciones.value      = ar.value.data
+  if (todasR.status === 'fulfilled') todasAsignaciones.value = todasR.value.data
+}
 
 async function cargarAsignaciones() {
   const [misR, todasR] = await Promise.allSettled([
@@ -410,6 +445,7 @@ onMounted(cargar)
 .estado-pill.green  { background: rgba(74,222,128,0.12); color: #4ade80; }
 .estado-pill.yellow { background: rgba(251,191,36,0.12); color: #fbbf24; }
 .estado-pill.blue   { background: rgba(56,189,248,0.12); color: #38bdf8; }
+.estado-pill.red    { background: rgba(248,113,113,0.12); color: #f87171; }
 .estado-pill.gray   { background: rgba(107,114,128,0.12); color: #9ca3af; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
 
@@ -455,6 +491,15 @@ onMounted(cargar)
 }
 .btn-asignar:hover:not(:disabled)    { background: rgba(74,222,128,0.2); border-color: rgba(74,222,128,0.5); }
 .btn-asignar:disabled                { opacity: 0.35; cursor: not-allowed; }
+
+/* Opciones sin stock en el select */
+.opt-sin-stock { color: #6b7280; }
+
+/* Aviso de sin stock */
+.aviso-sin-stock {
+  display: block; margin-top: 0.4rem;
+  color: #f87171; font-size: 0.75rem; font-weight: 500;
+}
 
 .btn-liberar {
   background: rgba(251, 191, 36, 0.1);

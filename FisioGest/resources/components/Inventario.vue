@@ -60,9 +60,9 @@
                 <span class="disp-total">/ {{ item.cantidad }}</span>
               </td>
               <td>
-                <span class="estado-badge" :class="item.estado">
+                <span class="estado-badge" :class="estadoCalculado(item)">
                   <span class="estado-dot"></span>
-                  {{ etiquetaEstado(item.estado) }}
+                  {{ etiquetaEstado(estadoCalculado(item)) }}
                 </span>
               </td>
               <td class="td-actions">
@@ -187,18 +187,21 @@
                 <input v-model.number="form.cantidad" type="number" min="0" placeholder="0" required />
               </div>
               <div class="form-group">
-                <label>Estado</label>
-                <div class="estado-select">
-                  <span class="estado-dot available"></span>
-                  <select v-model="form.estado">
-                    <option value="disponible">Disponible</option>
-                    <option value="en_uso">En Uso</option>
-                    <option value="mantenimiento">Mantenimiento</option>
-                    <option value="baja">Stock Bajo</option>
-                  </select>
-                </div>
+                <label>Mantenimiento</label>
+                <label class="checkbox-row">
+                  <input type="checkbox" v-model="form.mantenimiento" />
+                  <span>Marcar en mantenimiento</span>
+                </label>
               </div>
             </div>
+
+            <p class="estado-preview">
+              Estado resultante:
+              <span class="estado-badge" :class="estadoPreview">
+                <span class="estado-dot"></span>
+                {{ etiquetaEstado(estadoPreview) }}
+              </span>
+            </p>
 
             <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
@@ -243,7 +246,7 @@ const editingItem = ref(null)
 const saving      = ref(false)
 const errorMsg    = ref('')
 
-const form = ref({ nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 1, estado: 'disponible' })
+const form = ref({ nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 1, mantenimiento: false })
 
 const items             = ref([])
 const todasAsignaciones = ref([])
@@ -253,11 +256,11 @@ const fisioterapeutas   = ref([])
 const filtroAsignPaciente     = ref('')
 const filtroAsignEspecialista = ref('')
 
-// ── Stats ─────────────────────────────────────────────────────────────────────
+// ── Stats (basados en stock calculado, no en valor de BD) ─────────────────────
 const stats = computed(() => ({
   total:     items.value.length,
-  enUso:     items.value.filter(i => i.estado === 'en_uso').length,
-  stockBajo: items.value.filter(i => i.estado === 'baja').length,
+  enUso:     items.value.filter(i => estadoCalculado(i) === 'no_disponible').length,
+  stockBajo: items.value.filter(i => estadoCalculado(i) === 'baja').length,
   alertas:   items.value.filter(i => disponiblesDeItem(i) === 0 && (i.cantidad ?? 0) > 0).length,
 }))
 
@@ -270,9 +273,22 @@ function disponiblesDeItem(item) {
 }
 
 function disponiblesClass(disponibles, total) {
-  if (disponibles === 0)                             return 'disp-agotado'
-  if (disponibles <= Math.ceil((total ?? 0) * 0.3)) return 'disp-bajo'
+  if (disponibles === 0) return 'disp-agotado'
+  if (disponibles < 5)   return 'disp-bajo'
   return 'disp-ok'
+}
+
+// ── Umbral dinámico (configurable desde Configuración) ────────────────────────
+function getUmbral() { return Number(localStorage.getItem('inventario_umbral') ?? 5) }
+
+// ── Estado calculado desde stock real (ignora valor en BD salvo mantenimiento) ─
+function estadoCalculado(item) {
+  if (item.estado === 'mantenimiento') return 'mantenimiento'
+  const disp  = disponiblesDeItem(item)
+  const total = item.cantidad ?? 0
+  if (disp === 0)                 return 'no_disponible'
+  if (disp < getUmbral())         return 'baja'
+  return 'disponible'
 }
 
 // ── Asignaciones enriquecidas (para tabla admin) ──────────────────────────────
@@ -326,34 +342,54 @@ async function cargarItems() {
   if (fr.status === 'fulfilled') fisioterapeutas.value   = fr.value.data
 }
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
-function openModal(item) {
-  editingItem.value = item
-  errorMsg.value    = ''
-  form.value = item
-    ? { nombre: item.nombre, modelo: item.modelo ?? '', tipo: item.tipo, cantidad: item.cantidad, estado: item.estado }
-    : { nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 1, estado: 'disponible' }
-  showModal.value = true
-}
-
 function closeModal() {
   showModal.value   = false
   editingItem.value = null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const etiquetas = { disponible: 'Disponible', en_uso: 'En Uso', mantenimiento: 'Mantenimiento', baja: 'Stock Bajo' }
+const etiquetas = { disponible: 'Disponible', no_disponible: 'No Disponible', mantenimiento: 'Mantenimiento', baja: 'Stock Bajo' }
 function etiquetaEstado(val) { return etiquetas[val] ?? val }
+
+// Estado que se mostrará en el modal según la cantidad ingresada
+const estadoPreview = computed(() => {
+  if (form.value.mantenimiento) return 'mantenimiento'
+  const cantidad  = form.value.cantidad ?? 0
+  const asignados = editingItem.value
+    ? todasAsignaciones.value.filter(a => Number(a.inventario_id) === Number(editingItem.value.id_inventario)).length
+    : 0
+  const disp = Math.max(0, cantidad - asignados)
+  if (disp === 0 && cantidad > 0) return 'en_uso'
+  if (disp < getUmbral())         return 'baja'
+  return 'disponible'
+})
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(item) {
+  editingItem.value = item
+  errorMsg.value    = ''
+  form.value = item
+    ? { nombre: item.nombre, modelo: item.modelo ?? '', tipo: item.tipo, cantidad: item.cantidad, mantenimiento: item.estado === 'mantenimiento' }
+    : { nombre: '', modelo: '', tipo: 'Prótesis', cantidad: 1, mantenimiento: false }
+  showModal.value = true
+}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 async function saveItem() {
   saving.value   = true
   errorMsg.value = ''
   try {
+    const payload = {
+      nombre:   form.value.nombre,
+      modelo:   form.value.modelo,
+      tipo:     form.value.tipo,
+      cantidad: form.value.cantidad,
+      estado:   estadoPreview.value,   // siempre se calcula automáticamente
+    }
     if (editingItem.value) {
-      await inventarioService.update(editingItem.value.id_inventario, form.value)
+      await inventarioService.update(editingItem.value.id_inventario, payload)
     } else {
-      await inventarioService.create(form.value)
+      await inventarioService.create(payload)
     }
     await cargarItems()
     closeModal()
@@ -451,8 +487,8 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 .estado-badge .estado-dot { width: 8px; height: 8px; border-radius: 50%; }
 .estado-badge.disponible   { color: #4ade80; }
 .estado-badge.disponible .estado-dot { background: #4ade80; }
-.estado-badge.en_uso       { color: #38bdf8; }
-.estado-badge.en_uso .estado-dot { background: #38bdf8; }
+.estado-badge.no_disponible       { color: #f87171; }
+.estado-badge.no_disponible .estado-dot { background: #f87171; }
 .estado-badge.mantenimiento { color: #f59e0b; }
 .estado-badge.mantenimiento .estado-dot { background: #f59e0b; }
 .estado-badge.baja         { color: #f87171; }
@@ -599,4 +635,17 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 }
 .av-pac   { background: #064e2e; color: #4ade80; }
 .av-fisio { background: #0c2a4a; color: #38bdf8; }
+
+/* Checkbox mantenimiento */
+.checkbox-row {
+  display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  background: #0d0d0d; border: 1px solid #1c1c1c; border-radius: 7px;
+  padding: 0.6rem 0.75rem; color: #d1d5db; font-size: 0.875rem;
+}
+.checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: #4ade80; cursor: pointer; }
+
+/* Preview estado */
+.estado-preview {
+  font-size: 0.8rem; color: #6b7280; display: flex; align-items: center; gap: 0.5rem;
+}
 </style>

@@ -150,15 +150,68 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me',      [\App\Http\Controllers\Api\AuthController::class, 'me']);
 
     // ── Helper: obtener fisioterapeuta_id desde el usuario autenticado ─────────
-    // La relación correcta es: fisioterapeutas.usuario_id → usuarios.usuario_id
+    // Retorna null si el fisioterapeuta no existe o está inactivo.
     $getFisioId = function (Request $request) {
         $fisio = DB::table('fisioterapeutas')
             ->where('usuario_id', $request->user()->usuario_id)
             ->first();
-        return $fisio?->fisioterapeuta_id;
+        if (!$fisio || !$fisio->activo) return null;
+        return $fisio->fisioterapeuta_id;
     };
 
     // ── Endpoints exclusivos del fisioterapeuta ──────────────────────────────
+    // ── Perfil propio del fisioterapeuta ─────────────────────────────────────
+    Route::get('/fisio/mi-perfil', function (Request $request) use ($getFisioId) {
+        $fisioId = $getFisioId($request);
+        if (!$fisioId) return response()->json(null, 403);
+        return response()->json(
+            DB::table('fisioterapeutas')->where('fisioterapeuta_id', $fisioId)->first()
+        );
+    });
+
+    Route::put('/fisio/mi-perfil', function (Request $request) use ($getFisioId) {
+        $fisioId = $getFisioId($request);
+        if (!$fisioId) return response()->json(['success' => false], 403);
+
+        DB::table('fisioterapeutas')->where('fisioterapeuta_id', $fisioId)->update([
+            'nombre'       => $request->nombre,
+            'apellido'     => $request->apellido,
+            'especialidad' => $request->especialidad,
+            'telefono'     => $request->telefono,
+            'updated_at'   => now(),
+        ]);
+
+        // Sincronizar nombre en la tabla usuarios
+        $usuario = $request->user();
+        DB::table('usuarios')->where('usuario_id', $usuario->usuario_id)->update([
+            'nombre'     => trim("{$request->nombre} {$request->apellido}"),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Perfil actualizado.']);
+    });
+
+    // ── Cambiar contraseña del fisioterapeuta ─────────────────────────────────
+    Route::put('/fisio/mi-cuenta', function (Request $request) use ($getFisioId) {
+        $fisioId = $getFisioId($request);
+        if (!$fisioId) return response()->json(['success' => false], 403);
+
+        $usuario = $request->user();
+        if (!\Illuminate\Support\Facades\Hash::check($request->contrasena_actual, $usuario->contrasena)) {
+            return response()->json(['success' => false, 'message' => 'La contraseña actual no es correcta.'], 422);
+        }
+        if (empty($request->contrasena_nueva)) {
+            return response()->json(['success' => false, 'message' => 'La nueva contraseña no puede estar vacía.'], 422);
+        }
+
+        DB::table('usuarios')->where('usuario_id', $usuario->usuario_id)->update([
+            'contrasena' => \Illuminate\Support\Facades\Hash::make($request->contrasena_nueva),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Contraseña actualizada correctamente.']);
+    });
+
     Route::get('/fisio/mis-pacientes', function (Request $request) use ($getFisioId) {
         $fisioId = $getFisioId($request);
         if (!$fisioId) return response()->json([]);
@@ -179,10 +232,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/fisio/mis-asignaciones', function (Request $request) use ($getFisioId) {
         $fisioId = $getFisioId($request);
         if (!$fisioId) return response()->json([]);
-        $pacienteIds = DB::table('citas')
+        $pacienteIds = DB::table('pacientes')
             ->where('fisioterapeuta_id', $fisioId)
-            ->pluck('paciente_id')
-            ->unique();
+            ->pluck('paciente_id');
         return response()->json(
             DB::table('asignaciones_equipo')
                 ->whereIn('paciente_id', $pacienteIds)
@@ -426,6 +478,142 @@ Route::middleware('auth:sanctum')->group(function () {
         return response()->json(['success' => true]);
     });
 
+    // =========================================================================
+    // CONFIGURACIÓN DEL SISTEMA (admin)
+    // =========================================================================
+
+    Route::get('/admin/configuracion', function () {
+        $rows = DB::table('configuracion')->get();
+        $config = [];
+        foreach ($rows as $row) {
+            $config[$row->clave] = $row->valor;
+        }
+        return response()->json($config);
+    });
+
+    Route::put('/admin/configuracion', function (Request $request) {
+        foreach ($request->all() as $clave => $valor) {
+            DB::table('configuracion')->updateOrInsert(
+                ['clave' => $clave],
+                ['valor' => $valor, 'updated_at' => now(), 'created_at' => now()]
+            );
+        }
+        return response()->json(['success' => true, 'message' => 'Configuración guardada.']);
+    });
+
+    // Cambiar datos y contraseña del administrador
+    Route::put('/admin/cuenta', function (Request $request) {
+        $usuario = $request->user();
+        $update  = ['updated_at' => now()];
+
+        if (!empty($request->nombre)) {
+            $update['nombre'] = $request->nombre;
+        }
+
+        if (!empty($request->contrasena_actual)) {
+            if (!\Illuminate\Support\Facades\Hash::check($request->contrasena_actual, $usuario->contrasena)) {
+                return response()->json(['success' => false, 'message' => 'La contraseña actual no es correcta.'], 422);
+            }
+            if (empty($request->contrasena_nueva)) {
+                return response()->json(['success' => false, 'message' => 'La nueva contraseña no puede estar vacía.'], 422);
+            }
+            $update['contrasena'] = \Illuminate\Support\Facades\Hash::make($request->contrasena_nueva);
+        }
+
+        DB::table('usuarios')->where('usuario_id', $usuario->usuario_id)->update($update);
+        return response()->json(['success' => true, 'message' => 'Cuenta actualizada correctamente.']);
+    });
+
+    // ── Exportación de datos (CSV) ────────────────────────────────────────────
+    Route::get('/admin/exportar/pacientes', function () {
+        $pacientes = DB::table('pacientes as p')
+            ->leftJoin('fisioterapeutas as f', 'p.fisioterapeuta_id', '=', 'f.fisioterapeuta_id')
+            ->select('p.nombre', 'p.apellido', 'p.genero', 'p.fecha_nacimiento', 'p.telefono',
+                     DB::raw("CONCAT(f.nombre, ' ', f.apellido) as especialista"))
+            ->get();
+
+        $csv = "Nombre,Apellido,Género,Fecha Nacimiento,Teléfono,Especialista\n";
+        foreach ($pacientes as $p) {
+            $csv .= "\"{$p->nombre}\",\"{$p->apellido}\",\"{$p->genero}\",\"{$p->fecha_nacimiento}\",\"{$p->telefono}\",\"{$p->especialista}\"\n";
+        }
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="pacientes_' . now()->format('Y-m-d') . '.csv"',
+        ]);
+    });
+
+    Route::get('/admin/exportar/citas', function () {
+        $citas = DB::table('citas as c')
+            ->leftJoin('pacientes as p', 'c.paciente_id', '=', 'p.paciente_id')
+            ->leftJoin('fisioterapeutas as f', 'c.fisioterapeuta_id', '=', 'f.fisioterapeuta_id')
+            ->select('c.fecha_hora', 'c.estado', 'c.motivo',
+                     DB::raw("CONCAT(p.nombre, ' ', p.apellido) as paciente"),
+                     DB::raw("CONCAT(f.nombre, ' ', f.apellido) as fisioterapeuta"))
+            ->orderByDesc('c.fecha_hora')
+            ->get();
+
+        $csv = "Fecha y Hora,Paciente,Fisioterapeuta,Estado,Motivo\n";
+        foreach ($citas as $c) {
+            $csv .= "\"{$c->fecha_hora}\",\"{$c->paciente}\",\"{$c->fisioterapeuta}\",\"{$c->estado}\",\"{$c->motivo}\"\n";
+        }
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="citas_' . now()->format('Y-m-d') . '.csv"',
+        ]);
+    });
+
+    Route::get('/admin/exportar/inventario', function () {
+        $items = DB::table('inventario')->get();
+        $asignaciones = DB::table('asignaciones_equipo')->where('estado', 'activo')->get()->groupBy('inventario_id');
+
+        // Leer umbral desde configuración (default 5)
+        $umbralRow = DB::table('configuracion')->where('clave', 'inventario_umbral')->first();
+        $umbral    = $umbralRow ? (int) $umbralRow->valor : 5;
+
+        $etiquetas = ['disponible' => 'Disponible', 'no_disponible' => 'No Disponible', 'baja' => 'Stock Bajo', 'mantenimiento' => 'Mantenimiento'];
+
+        $csv = "Equipo,Tipo,Cantidad Total,Asignados,Disponibles,Estado\n";
+        foreach ($items as $item) {
+            $asignados   = isset($asignaciones[$item->id_inventario]) ? $asignaciones[$item->id_inventario]->count() : 0;
+            $disponibles = max(0, $item->cantidad - $asignados);
+
+            // Calcular estado real igual que el frontend
+            if ($item->estado === 'mantenimiento')       $estadoReal = 'mantenimiento';
+            elseif ($disponibles === 0)                         $estadoReal = 'no_disponible';
+            elseif ($disponibles < $umbral)              $estadoReal = 'baja';
+            else                                         $estadoReal = 'disponible';
+
+            $estadoTexto = $etiquetas[$estadoReal] ?? $estadoReal;
+            $csv .= "\"{$item->nombre}\",\"{$item->tipo}\",\"{$item->cantidad}\",\"{$asignados}\",\"{$disponibles}\",\"{$estadoTexto}\"\n";
+        }
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="inventario_' . now()->format('Y-m-d') . '.csv"',
+        ]);
+    });
+
+    Route::get('/admin/exportar/especialistas', function () {
+        $fisios = DB::table('fisioterapeutas as f')
+            ->leftJoin('usuarios as u', 'f.usuario_id', '=', 'u.usuario_id')
+            ->select('f.nombre', 'f.apellido', 'f.especialidad', 'f.telefono', 'f.activo', 'u.correo')
+            ->orderBy('f.nombre')
+            ->get();
+
+        $csv = "Nombre,Apellido,Especialidad,Teléfono,Estado,Correo\n";
+        foreach ($fisios as $f) {
+            $estado = $f->activo ? 'Activo' : 'Inactivo';
+            $csv .= "\"{$f->nombre}\",\"{$f->apellido}\",\"{$f->especialidad}\",\"{$f->telefono}\",\"{$estado}\",\"{$f->correo}\"\n";
+        }
+
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="especialistas_' . now()->format('Y-m-d') . '.csv"',
+        ]);
+    });
+
     // ── Eventos de agenda personal ───────────────────────────────────────────
     Route::get('/fisio/eventos', function (Request $request) use ($getFisioId) {
         $fisioId = $getFisioId($request);
@@ -479,22 +667,52 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
+// ── Helper global: recalcula y persiste el estado real de un item ────────────
+$sincEstado = function (int $inventarioId) {
+    $item = DB::table('inventario')->where('id_inventario', $inventarioId)->first();
+    if (!$item || $item->estado === 'mantenimiento') return;
+
+    $umbralRow   = DB::table('configuracion')->where('clave', 'inventario_umbral')->first();
+    $umbral      = $umbralRow ? (int) $umbralRow->valor : 5;
+    $asignados   = DB::table('asignaciones_equipo')
+                     ->where('inventario_id', $inventarioId)
+                     ->where('estado', 'activo')
+                     ->count();
+    $disponibles = max(0, $item->cantidad - $asignados);
+
+    if ($disponibles === 0)         $nuevoEstado = 'en_uso';
+    elseif ($disponibles < $umbral) $nuevoEstado = 'baja';
+    else                            $nuevoEstado = 'disponible';
+
+    DB::table('inventario')
+      ->where('id_inventario', $inventarioId)
+      ->update(['estado' => $nuevoEstado, 'updated_at' => now()]);
+};
+
 // =========================================================================
 // 2. MÓDULO DE INVENTARIO (Rutas originales estables)
 // =========================================================================
 Route::get('/inventario', [\App\Http\Controllers\Api\InventarioController::class, 'index']);
 Route::post('/inventario', [\App\Http\Controllers\Api\InventarioController::class, 'store']);
 
-Route::put('/inventario/{id}', function (Request $request, $id) {
+Route::put('/inventario/{id}', function (Request $request, $id) use ($sincEstado) {
+    // Si el admin marca mantenimiento explícitamente, respetar ese valor
+    // En cualquier otro caso, calcular el estado desde el stock real
+    $esMant = $request->estado === 'mantenimiento';
+
     DB::table('inventario')->where('id_inventario', $id)->update([
         'nombre'     => $request->nombre,
         'tipo'       => $request->tipo,
         'marca'      => $request->marca,
         'modelo'     => $request->modelo,
-        'estado'     => $request->estado,
+        'estado'     => $esMant ? 'mantenimiento' : $request->estado, // valor temporal
         'cantidad'   => $request->cantidad,
         'updated_at' => now(),
     ]);
+
+    // Recalcular y persistir estado real (si no es mantenimiento)
+    if (!$esMant) $sincEstado((int) $id);
+
     return response()->json(['success' => true, 'message' => 'Equipo actualizado.']);
 });
 
@@ -512,25 +730,50 @@ Route::get('/asignaciones', function () {
     );
 });
 
-Route::post('/asignaciones', function (Request $request) {
+Route::post('/asignaciones', function (Request $request) use ($sincEstado) {
+    $inventarioId = (int) $request->inventario_id;
+
+    // Verificar stock disponible antes de asignar (evita race conditions)
+    $item      = DB::table('inventario')->where('id_inventario', $inventarioId)->first();
+    $asignados = DB::table('asignaciones_equipo')
+                   ->where('inventario_id', $inventarioId)
+                   ->where('estado', 'activo')
+                   ->count();
+    $disponibles = $item ? max(0, $item->cantidad - $asignados) : 0;
+
+    if ($disponibles <= 0) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Este equipo no tiene unidades disponibles.',
+        ], 422);
+    }
+
     $id = DB::table('asignaciones_equipo')->insertGetId([
         'paciente_id'      => $request->paciente_id,
-        'inventario_id'    => $request->inventario_id,
+        'inventario_id'    => $inventarioId,
         'fecha_asignacion' => now()->toDateString(),
         'estado'           => 'activo',
         'notas'            => $request->notas ?? null,
         'created_at'       => now(),
         'updated_at'       => now(),
     ]);
+
+    $sincEstado($inventarioId); // Actualizar estado en BD
+
     return response()->json(['success' => true, 'id' => $id, 'message' => 'Equipo asignado correctamente.'], 201);
 });
 
-Route::patch('/asignaciones/{id}/liberar', function (Request $request, $id) {
+Route::patch('/asignaciones/{id}/liberar', function (Request $request, $id) use ($sincEstado) {
+    $asignacion = DB::table('asignaciones_equipo')->where('id_asignaciones', $id)->first();
+
     DB::table('asignaciones_equipo')->where('id_asignaciones', $id)->update([
         'estado'           => 'devuelto',
         'fecha_devolucion' => now()->toDateString(),
         'updated_at'       => now(),
     ]);
+
+    if ($asignacion) $sincEstado((int) $asignacion->inventario_id); // Actualizar estado en BD
+
     return response()->json(['success' => true, 'message' => 'Equipo liberado correctamente.']);
 });
 
