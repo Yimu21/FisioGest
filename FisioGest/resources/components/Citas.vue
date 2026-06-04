@@ -73,9 +73,60 @@
           <h3 class="table-title">
             {{ fechaSeleccionada ? 'Citas del ' + formatFechaCorta(fechaSeleccionada) : 'Historial y Próximos Turnos' }}
           </h3>
-          <span v-if="fechaSeleccionada" class="table-count">
+          <span v-if="hayFiltrosActivos" class="table-count">
             {{ citasFiltradas.length }} cita{{ citasFiltradas.length !== 1 ? 's' : '' }}
           </span>
+        </div>
+
+        <!-- Filtros adicionales -->
+        <div class="filtros-bar">
+          <div class="filtro-group">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <select v-model="filtroFisio" class="filtro-select">
+              <option value="">Todos los especialistas</option>
+              <option v-for="f in fisioterapeutas" :key="f.fisioterapeuta_id" :value="f.fisioterapeuta_id">
+                {{ f.nombre }} {{ f.apellido }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filtro-group">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <select v-model="filtroPaciente" class="filtro-select">
+              <option value="">Todos los pacientes</option>
+              <option v-for="p in pacientes" :key="p.paciente_id" :value="p.paciente_id">
+                {{ p.nombre }} {{ p.apellido }}
+              </option>
+            </select>
+          </div>
+
+          <div class="filtro-group">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <select v-model="filtroEstado" class="filtro-select">
+              <option value="">Todos los estados</option>
+              <option value="programada">Programada</option>
+              <option value="atendida">Atendida</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+          </div>
+
+          <button v-if="hayFiltrosActivos" class="btn-limpiar-filtros" @click="limpiarTodosFiltros">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            Limpiar filtros
+          </button>
         </div>
 
         <div class="table-wrapper">
@@ -125,6 +176,14 @@
                     </svg>
                     Editar
                   </button>
+                  <button class="btn-accion btn-accion-delete" @click="openDeleteModal(cita)" title="Eliminar cita">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/>
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -149,7 +208,7 @@
           <form class="modal-form" @submit.prevent="saveCita">
             <div class="form-group">
               <label>Paciente *</label>
-              <select v-model="form.paciente_id" required>
+              <select v-model="form.paciente_id" required @change="onPacienteChange">
                 <option value="">-- Seleccione un paciente --</option>
                 <option v-for="p in pacientes" :key="p.paciente_id" :value="p.paciente_id">
                   {{ p.nombre }} {{ p.apellido }}
@@ -159,23 +218,98 @@
 
             <div class="form-group">
               <label>Fisioterapeuta *</label>
-              <select v-model="form.fisioterapeuta_id" required>
-                <option value="">-- Seleccione un especialista --</option>
-                <option v-for="f in fisioterapeutas" :key="f.fisioterapeuta_id" :value="f.fisioterapeuta_id">
-                  {{ f.nombre }} {{ f.apellido }} — {{ f.especialidad }}
-                </option>
-              </select>
+
+              <!-- Paciente tiene especialista asignado → solo lectura -->
+              <template v-if="fisioAsignadoPaciente">
+                <div class="fisio-asignado-box">
+                  <div class="fa-info">
+                    <span class="fa-nombre">{{ nombreFisio(fisioAsignadoPaciente) }}</span>
+                    <span class="fa-badge">Especialista asignado</span>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+              </template>
+
+              <!-- Sin asignación → select libre -->
+              <template v-else>
+                <select v-model="form.fisioterapeuta_id" required @change="() => { form.hora = ''; validarFecha() }">
+                  <option value="">-- Seleccione un especialista --</option>
+                  <option v-for="f in fisioterapeutas" :key="f.fisioterapeuta_id" :value="f.fisioterapeuta_id">
+                    {{ f.nombre }} {{ f.apellido }} — {{ f.especialidad }}
+                  </option>
+                </select>
+                <span v-if="!form.paciente_id" class="field-hint">Selecciona primero el paciente para auto-asignar su especialista.</span>
+                <span v-else class="field-hint warn-hint">Este paciente no tiene especialista asignado. Asígnalo en la sección Pacientes.</span>
+              </template>
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label>Fecha *</label>
-                <input v-model="form.fecha" type="date" required />
-              </div>
-              <div class="form-group">
-                <label>Hora *</label>
-                <input v-model="form.hora" type="time" required />
-              </div>
+            <!-- Fecha -->
+            <div class="form-group">
+              <label>Fecha *</label>
+              <input v-model="form.fecha" type="date" required @change="onFechaChange" />
+              <span v-if="advertenciaFecha" class="field-warn">{{ advertenciaFecha }}</span>
+            </div>
+
+            <!-- Selector de hora -->
+            <div class="form-group">
+              <label>
+                Hora *
+                <span v-if="rangoHorario" class="label-hint">{{ rangoHorario }}</span>
+              </label>
+
+              <!-- Slot picker: fisio + fecha seleccionados y hay horario configurado -->
+              <template v-if="slotsDelDia.length > 0">
+                <div v-if="slotsDelDia.every(s => s.ocupado)" class="slots-empty">
+                  No hay horarios disponibles para este día.
+                </div>
+                <div v-else class="slots-grid">
+                  <button
+                    v-for="s in slotsDelDia"
+                    :key="s.hora"
+                    type="button"
+                    class="slot-btn"
+                    :class="{
+                      'slot-selected':  form.hora === s.hora,
+                      'slot-ocupado':   s.ocupado,
+                      'slot-disponible': !s.ocupado,
+                    }"
+                    :disabled="s.ocupado"
+                    @click="seleccionarSlot(s.hora)"
+                  >
+                    {{ formatSlotLabel(s.hora) }}
+                    <span v-if="s.ocupado" class="slot-tag">Ocupado</span>
+                  </button>
+                </div>
+                <span v-if="!form.hora && form.fecha" class="field-warn">Selecciona una hora disponible.</span>
+              </template>
+
+              <!-- Fallback: sin horario configurado para este día -->
+              <template v-else>
+                <div class="time-spinner">
+                  <div class="ts-col">
+                    <button type="button" class="ts-btn" @click="adjustHour(1)">▲</button>
+                    <span class="ts-val">{{ spinnerHH }}</span>
+                    <button type="button" class="ts-btn" @click="adjustHour(-1)">▼</button>
+                  </div>
+                  <span class="ts-sep">:</span>
+                  <div class="ts-col">
+                    <button type="button" class="ts-btn" @click="adjustMin(1)">▲</button>
+                    <span class="ts-val">{{ spinnerMM }}</span>
+                    <button type="button" class="ts-btn" @click="adjustMin(-1)">▼</button>
+                  </div>
+                  <div class="ts-col ts-ampm">
+                    <button type="button" class="ts-btn" @click="toggleAmPm">▲</button>
+                    <span class="ts-val">{{ spinnerAmPm }}</span>
+                    <button type="button" class="ts-btn" @click="toggleAmPm">▼</button>
+                  </div>
+                </div>
+                <span v-if="advertenciaHora" class="field-warn">{{ advertenciaHora }}</span>
+                <span v-if="!form.fisioterapeuta_id || !form.fecha" class="field-hint">
+                  Selecciona fisioterapeuta y fecha para ver los horarios disponibles.
+                </span>
+              </template>
             </div>
 
             <div class="form-group">
@@ -186,14 +320,94 @@
             <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
             <div class="modal-actions">
-              <button type="submit" class="btn-guardar" :disabled="saving">
+              <button type="submit" class="btn-guardar" :disabled="saving || bloqueoFecha || bloqueoHora || (slotsDelDia.length > 0 && !form.hora)">
                 {{ saving ? 'Guardando...' : (editingCita ? 'Guardar Cambios' : 'Agendar Cita') }}
               </button>
               <button type="button" class="btn-cancelar" @click="closeModal">Cancelar</button>
             </div>
+
           </form>
         </div>
       </div>
+    </Teleport>
+
+    <!-- Modal: Confirmar Eliminación -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showDeleteModal" @click.self="showDeleteModal = false">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h3>Eliminar Cita</h3>
+            <button class="modal-close" @click="showDeleteModal = false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="estado-modal-info" v-if="citaAEliminar">
+            <div class="info-row">
+              <span class="info-label">Paciente</span>
+              <span class="info-val">{{ nombrePaciente(citaAEliminar.paciente_id) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Fisioterapeuta</span>
+              <span class="info-val">{{ nombreFisio(citaAEliminar.fisioterapeuta_id) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Fecha y hora</span>
+              <span class="info-val td-fecha">{{ formatFecha(citaAEliminar.fecha_hora) }}</span>
+            </div>
+          </div>
+
+          <p class="delete-warning">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            Esta acción eliminará la cita permanentemente y no se puede deshacer.
+          </p>
+
+          <div class="modal-actions" style="margin-top:1rem;">
+            <button class="btn-confirmar-eliminar" :disabled="deleting" @click="eliminarCita">
+              {{ deleting ? 'Eliminando...' : 'Sí, eliminar cita' }}
+            </button>
+            <button class="btn-cancelar" @click="showDeleteModal = false">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Toast de aviso de horario (no bloquea, solo informa) -->
+    <Teleport to="body">
+      <Transition name="aviso-toast">
+        <div v-if="avisoToast" class="aviso-toast-wrap" @click="avisoToast = ''">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div>
+            <p class="avt-title">Cita guardada con aviso</p>
+            <p class="avt-msg">{{ avisoToast }}</p>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Toast de éxito -->
+    <Teleport to="body">
+      <Transition name="aviso-toast">
+        <div v-if="successToast" class="success-toast-wrap" @click="successToast = ''">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <div>
+            <p class="avt-title">¡Listo!</p>
+            <p class="avt-msg" style="color:#86efac">{{ successToast }}</p>
+          </div>
+        </div>
+      </Transition>
     </Teleport>
 
     <!-- Modal: Cambiar Estado -->
@@ -226,17 +440,18 @@
 
           <div class="form-group" style="margin-top:1rem;">
             <label>Nuevo Estado *</label>
-            <select v-model="nuevoEstado">
-              <option value="programada">Programada</option>
-              <option value="atendida">Atendida</option>
-              <option value="cancelada">Cancelada (libera el horario)</option>
+            <select v-model="nuevoEstado" required>
+              <option value="" disabled>-- Selecciona un nuevo estado --</option>
+              <option v-if="citaSeleccionada?.estado !== 'programada'" value="programada">Programada</option>
+              <option v-if="citaSeleccionada?.estado !== 'atendida'"   value="atendida">Atendida</option>
+              <option v-if="citaSeleccionada?.estado !== 'cancelada'"  value="cancelada">Cancelada (libera el horario)</option>
             </select>
           </div>
 
           <p v-if="errorEstado" class="error-msg" style="margin-top:0.75rem;">{{ errorEstado }}</p>
 
           <div class="modal-actions" style="margin-top:1.25rem;">
-            <button class="btn-guardar" @click="saveEstado" :disabled="updatingEstado">
+            <button class="btn-guardar" @click="saveEstado" :disabled="updatingEstado || !nuevoEstado">
               {{ updatingEstado ? 'Guardando...' : 'Guardar Cambio' }}
             </button>
             <button class="btn-cancelar" @click="closeEstadoModal">Cancelar</button>
@@ -249,7 +464,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { citaService, pacienteService, fisioterapeutaService } from '@/services/api'
 
@@ -260,6 +475,10 @@ const showModal    = ref(false)
 const saving       = ref(false)
 const errorMsg     = ref('')
 const editingCita  = ref(null)
+const avisoToast   = ref('')
+let   avisoTimer   = null
+const successToast = ref('')
+let   successTimer = null
 
 const showEstadoModal  = ref(false)
 const citaSeleccionada = ref(null)
@@ -270,6 +489,188 @@ const errorEstado      = ref('')
 const fisioterapeutas = ref([])
 
 const form = ref({ paciente_id: '', fisioterapeuta_id: '', fecha: '', hora: '', motivo: '' })
+const showDeleteModal = ref(false)
+const citaAEliminar   = ref(null)
+const deleting        = ref(false)
+
+// ── Validación de horario del fisioterapeuta (frontend) ───────────────────
+const advertenciaFecha  = ref('')
+const advertenciaHora   = ref('')
+const bloqueoFecha      = ref(false)  // true = día no laborable, bloquea submit
+const bloqueoHora       = ref(false)  // true = hora fuera de rango, bloquea submit
+const horaMin           = ref('')
+const horaMax           = ref('')
+const rangoHorario      = ref('')
+
+const DIAS_KEY   = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab']
+const MAPA_ADMIN = { 'Lunes':'lun','Martes':'mar','Miércoles':'mie','Jueves':'jue','Viernes':'vie','Sábado':'sab','Domingo':'dom' }
+
+// ── Slot picker ───────────────────────────────────────────────────────────────
+// Devuelve la config normalizada {activo,entrada,salida} para el día seleccionado
+function confDiaNormalizada() {
+  if (!form.value.fisioterapeuta_id || !form.value.fecha) return null
+  const f = fisioterapeutas.value.find(f => f.fisioterapeuta_id == form.value.fisioterapeuta_id)
+  if (!f || !f.horario) return null
+  const h = typeof f.horario === 'string' ? JSON.parse(f.horario) : f.horario
+  const norm = {}
+  for (const [k, v] of Object.entries(h)) {
+    const clave = MAPA_ADMIN[k] ?? k
+    norm[clave] = { activo: v.activo ?? false, entrada: v.entrada ?? v.inicio ?? null, salida: v.salida ?? v.fin ?? null }
+  }
+  const [y, m, d] = form.value.fecha.split('-').map(Number)
+  const diaClave  = DIAS_KEY[new Date(y, m - 1, d).getDay()]
+  const conf      = norm[diaClave]
+  return (conf?.activo && conf.entrada && conf.salida) ? conf : null
+}
+
+// Slots de 30 min dentro del horario, con flag de ocupado
+const slotsDelDia = computed(() => {
+  const conf = confDiaNormalizada()
+  if (!conf) return []
+
+  const [hIn, mIn]   = conf.entrada.split(':').map(Number)
+  const [hOut, mOut] = conf.salida.split(':').map(Number)
+  let   cur  = hIn * 60 + mIn
+  const end  = hOut * 60 + mOut
+
+  // Citas programadas del mismo fisio en este día (excluye la que se edita)
+  const editId = editingCita.value?.cita_id
+  const citasDia = citas.value.filter(c =>
+    c.fisioterapeuta_id == form.value.fisioterapeuta_id &&
+    c.estado === 'programada' &&
+    c.fecha_hora?.startsWith(form.value.fecha) &&
+    c.cita_id !== editId
+  )
+
+  const slots = []
+  while (cur + 60 <= end) {           // cada slot requiere 60 min
+    const hh   = String(Math.floor(cur / 60)).padStart(2, '0')
+    const mm   = String(cur % 60).padStart(2, '0')
+    const hora = `${hh}:${mm}`
+
+    // Un slot en T está ocupado si [T, T+60] solapa con alguna cita [cStart, cStart+60]
+    const ocupado = citasDia.some(c => {
+      const [, t]  = (c.fecha_hora ?? '').split(' ')
+      const [ch, cm] = (t ?? '00:00').split(':').map(Number)
+      const cStart = ch * 60 + cm
+      return cur < cStart + 60 && cur + 60 > cStart
+    })
+
+    slots.push({ hora, ocupado })
+    cur += 30
+  }
+  return slots
+})
+
+function seleccionarSlot(hora) {
+  form.value.hora = hora
+  advertenciaHora.value = ''
+  bloqueoHora.value     = false
+}
+
+function onFechaChange() {
+  form.value.hora = ''   // resetear hora al cambiar fecha
+  validarFecha()
+}
+
+function formatSlotLabel(hora) {
+  const [h, m] = hora.split(':').map(Number)
+  const ampm   = h >= 12 ? 'p.m.' : 'a.m.'
+  const hh     = h % 12 || 12
+  return `${hh}:${String(m).padStart(2,'0')} ${ampm}`
+}
+
+function horarioFisioActual() {
+  if (!form.value.fisioterapeuta_id) return null
+  const f = fisioterapeutas.value.find(f => f.fisioterapeuta_id == form.value.fisioterapeuta_id)
+  if (!f || !f.horario) return null
+  return typeof f.horario === 'string' ? JSON.parse(f.horario) : f.horario
+}
+
+function validarFecha() {
+  advertenciaFecha.value = ''
+  bloqueoFecha.value     = false
+  horaMin.value          = ''
+  horaMax.value          = ''
+  rangoHorario.value     = ''
+  advertenciaHora.value  = ''
+  bloqueoHora.value      = false
+  if (!form.value.fecha) return
+
+  const horario = horarioFisioActual()
+  if (!horario) return
+
+  const [y, m, d] = form.value.fecha.split('-').map(Number)
+  const diaSemana = new Date(y, m - 1, d).getDay()
+  const clave = DIAS_KEY[diaSemana]
+  const conf  = horario[clave]
+
+  if (conf !== undefined && conf !== null && !conf.activo) {
+    const NOMBRES = { lun:'lunes', mar:'martes', mie:'miércoles', jue:'jueves', vie:'viernes', sab:'sábado', dom:'domingo' }
+    advertenciaFecha.value = `El fisioterapeuta no atiende los ${NOMBRES[clave] ?? clave}. No es posible agendar en este día.`
+    bloqueoFecha.value = true
+    return
+  }
+
+  if (conf?.entrada) horaMin.value = conf.entrada
+  if (conf?.salida)  horaMax.value = conf.salida
+  if (conf?.entrada && conf?.salida) rangoHorario.value = `${conf.entrada} – ${conf.salida}`
+
+  validarHora()
+}
+
+function validarHora() {
+  advertenciaHora.value = ''
+  bloqueoHora.value     = false
+  if (!form.value.hora || !horaMin.value) return
+  if (form.value.hora < horaMin.value) {
+    advertenciaHora.value = `Fuera del horario: el fisioterapeuta atiende desde las ${horaMin.value}.`
+    bloqueoHora.value = true
+  } else if (horaMax.value && form.value.hora >= horaMax.value) {
+    advertenciaHora.value = `Fuera del horario: el fisioterapeuta atiende hasta las ${horaMax.value}.`
+    bloqueoHora.value = true
+  }
+}
+
+// ── Time Spinner ──────────────────────────────────────────────────────────────
+const spinnerH   = ref(8)   // 1-12
+const spinnerMin = ref(0)   // 0-59 in steps of 5
+const spinnerPm  = ref(false)
+
+const spinnerHH   = computed(() => String(spinnerH.value).padStart(2, '0'))
+const spinnerMM   = computed(() => String(spinnerMin.value).padStart(2, '0'))
+const spinnerAmPm = computed(() => spinnerPm.value ? 'p.m.' : 'a.m.')
+
+function syncSpinnerToForm() {
+  let h = spinnerH.value % 12
+  if (spinnerPm.value) h += 12
+  form.value.hora = `${String(h).padStart(2, '0')}:${spinnerMM.value}`
+  validarHora()
+}
+
+function adjustHour(delta) {
+  spinnerH.value = ((spinnerH.value - 1 + delta + 12) % 12) + 1
+  syncSpinnerToForm()
+}
+
+function adjustMin(delta) {
+  spinnerMin.value = (spinnerMin.value + delta * 5 + 60) % 60
+  syncSpinnerToForm()
+}
+
+function toggleAmPm() {
+  spinnerPm.value = !spinnerPm.value
+  syncSpinnerToForm()
+}
+
+// Inicializar spinner con hora actual cuando se abre el modal
+watch(() => form.value.hora, (val) => {
+  if (!val) return
+  const [hh, mm] = val.split(':').map(Number)
+  spinnerPm.value = hh >= 12
+  spinnerH.value  = hh % 12 || 12
+  spinnerMin.value = Math.round(mm / 5) * 5 % 60
+}, { immediate: false })
 
 // ── Calendario ────────────────────────────────────────────────────────────────
 
@@ -354,26 +755,103 @@ function seleccionarDia(dia) {
 
 function limpiarFiltro() {
   fechaSeleccionada.value = null
+  // No limpia filtroFisio/filtroPaciente/filtroEstado — esos persisten
+}
+
+// ── Auto-asignación de fisioterapeuta por paciente ────────────────────────────
+
+// Retorna el fisioterapeuta_id asignado al paciente seleccionado (o null)
+const fisioAsignadoPaciente = computed(() => {
+  if (!form.value.paciente_id) return null
+  const p = pacientes.value.find(p => p.paciente_id == form.value.paciente_id)
+  return p?.fisioterapeuta_id || null
+})
+
+function onPacienteChange() {
+  const fisioId = fisioAsignadoPaciente.value
+  form.value.fisioterapeuta_id = fisioId ?? ''
+  form.value.hora = ''
+  resetAdvertencias()
+  if (fisioId) validarFecha()
+}
+
+// ── Filtros adicionales ───────────────────────────────────────────────────────
+
+const filtroFisio    = ref('')
+const filtroPaciente = ref('')
+const filtroEstado   = ref('')
+
+const hayFiltrosActivos = computed(() =>
+  !!fechaSeleccionada.value || !!filtroFisio.value || !!filtroPaciente.value || !!filtroEstado.value
+)
+
+function limpiarTodosFiltros() {
+  fechaSeleccionada.value = null
+  filtroFisio.value       = ''
+  filtroPaciente.value    = ''
+  filtroEstado.value      = ''
 }
 
 // ── Lista filtrada y ordenada ─────────────────────────────────────────────────
 
 const citasFiltradas = computed(() => {
-  const ordenadas = citas.value.slice().sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))
-  if (!fechaSeleccionada.value) return ordenadas
-  return ordenadas.filter(c => c.fecha_hora && c.fecha_hora.slice(0, 10) === fechaSeleccionada.value)
+  let result = citas.value.slice().sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora))
+  if (fechaSeleccionada.value)
+    result = result.filter(c => c.fecha_hora && c.fecha_hora.slice(0, 10) === fechaSeleccionada.value)
+  if (filtroFisio.value)
+    result = result.filter(c => c.fisioterapeuta_id == filtroFisio.value)
+  if (filtroPaciente.value)
+    result = result.filter(c => c.paciente_id == filtroPaciente.value)
+  if (filtroEstado.value)
+    result = result.filter(c => c.estado === filtroEstado.value)
+  return result
 })
 
 // ── Modales ───────────────────────────────────────────────────────────────────
 
-function openModal() {
+// ── Banner de horario del fisio seleccionado ─────────────────────────────
+const horarioBanner = computed(() => {
+  if (!form.value.fisioterapeuta_id) return null
+  const f = fisioterapeutas.value.find(f => f.fisioterapeuta_id == form.value.fisioterapeuta_id)
+  if (!f || !f.horario) return null
+  const h = typeof f.horario === 'string' ? JSON.parse(f.horario) : f.horario
+  const NOMBRES = { lun:'Lun', mar:'Mar', mie:'Mié', jue:'Jue', vie:'Vie', sab:'Sáb', dom:'Dom' }
+  const activos = ['lun','mar','mie','jue','vie','sab','dom']
+    .filter(k => h[k]?.activo)
+    .map(k => `${NOMBRES[k]} ${h[k].entrada}–${h[k].salida}`)
+  return activos.length ? activos : null
+})
+
+function resetAdvertencias() {
+  advertenciaFecha.value = ''
+  advertenciaHora.value  = ''
+  bloqueoFecha.value     = false
+  bloqueoHora.value      = false
+  horaMin.value = ''
+  horaMax.value = ''
+  rangoHorario.value = ''
+}
+
+async function recargarFisioterapeutas() {
+  try {
+    const res = await fisioterapeutaService.getAll()
+    fisioterapeutas.value = res.data.filter(f => f.activo)
+  } catch {}
+}
+
+async function openModal() {
   editingCita.value = null
-  form.value = { paciente_id: '', fisioterapeuta_id: '', fecha: '', hora: '', motivo: '' }
+  spinnerH.value   = 8
+  spinnerMin.value = 0
+  spinnerPm.value  = false
+  form.value = { paciente_id: '', fisioterapeuta_id: '', fecha: '', hora: '08:00', motivo: '' }
   errorMsg.value = ''
+  resetAdvertencias()
+  await recargarFisioterapeutas()
   showModal.value = true
 }
 
-function openEditModal(cita) {
+async function openEditModal(cita) {
   editingCita.value = cita
   const [fecha, horaCompleta] = (cita.fecha_hora ?? '').split(' ')
   const hora = horaCompleta ? horaCompleta.slice(0, 5) : ''
@@ -384,8 +862,11 @@ function openEditModal(cita) {
     hora,
     motivo: cita.motivo ?? '',
   }
-  errorMsg.value  = ''
+  errorMsg.value = ''
+  resetAdvertencias()
+  await recargarFisioterapeutas()
   showModal.value = true
+  validarFecha()
 }
 
 function closeModal() {
@@ -393,9 +874,31 @@ function closeModal() {
   editingCita.value = null
 }
 
+function openDeleteModal(cita) {
+  citaAEliminar.value  = cita
+  showDeleteModal.value = true
+}
+
+async function eliminarCita() {
+  deleting.value = true
+  try {
+    await citaService.delete(citaAEliminar.value.cita_id)
+    await cargarDatos()
+    showDeleteModal.value = false
+    citaAEliminar.value   = null
+    clearTimeout(successTimer)
+    successToast.value = 'Cita eliminada correctamente.'
+    successTimer = setTimeout(() => { successToast.value = '' }, 4000)
+  } catch {
+    // mantener modal abierto si falla
+  } finally {
+    deleting.value = false
+  }
+}
+
 function openEstadoModal(cita) {
   citaSeleccionada.value = cita
-  nuevoEstado.value      = cita.estado
+  nuevoEstado.value      = ''   // sin preselección — el estado actual no aparece como opción
   errorEstado.value      = ''
   showEstadoModal.value  = true
 }
@@ -455,7 +958,7 @@ async function cargarDatos() {
     ])
     if (citasRes.status === 'fulfilled')     citas.value           = citasRes.value.data
     if (pacientesRes.status === 'fulfilled') pacientes.value       = pacientesRes.value.data
-    if (fisiosRes.status === 'fulfilled')    fisioterapeutas.value = fisiosRes.value.data
+    if (fisiosRes.status === 'fulfilled')    fisioterapeutas.value = fisiosRes.value.data.filter(f => f.activo)
   } finally {
     loading.value = false
   }
@@ -471,15 +974,27 @@ async function saveCita() {
     motivo:            form.value.motivo,
   }
   try {
+    let res
     if (editingCita.value) {
-      await citaService.update(editingCita.value.cita_id, payload)
+      res = await citaService.update(editingCita.value.cita_id, payload)
     } else {
-      await citaService.create(payload)
+      res = await citaService.create(payload)
     }
     await cargarDatos()
     closeModal()
-  } catch {
-    errorMsg.value = 'Error al guardar la cita. Verifica los datos.'
+    // Toast de éxito
+    clearTimeout(successTimer)
+    successToast.value = editingCita.value ? 'Cita actualizada con éxito.' : 'Cita agendada con éxito.'
+    successTimer = setTimeout(() => { successToast.value = '' }, 4000)
+    // Si el backend devuelve un aviso de horario, mostrarlo como toast
+    if (res?.data?.aviso) {
+      clearTimeout(avisoTimer)
+      avisoToast.value = res.data.aviso
+      avisoTimer = setTimeout(() => { avisoToast.value = '' }, 6000)
+    }
+  } catch (err) {
+    const msg = err?.response?.data?.message || ''
+    errorMsg.value = msg || 'Error al guardar la cita. Verifica los datos e inténtalo de nuevo.'
   } finally {
     saving.value = false
   }
@@ -745,6 +1260,62 @@ onMounted(cargarDatos)
   border-radius: 20px;
 }
 
+/* ── Filtros bar ── */
+.filtros-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid #1c1c1c;
+}
+
+.filtro-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #0d0d0d;
+  border: 1px solid #1c1c1c;
+  border-radius: 7px;
+  padding: 0.35rem 0.65rem;
+  color: #6b7280;
+  transition: border-color 0.15s;
+}
+.filtro-group:focus-within {
+  border-color: #074434;
+}
+
+.filtro-select {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #d1d5db;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  min-width: 160px;
+}
+.filtro-select option { background: #111111; }
+
+.btn-limpiar-filtros {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+  margin-left: auto;
+}
+.btn-limpiar-filtros:hover { background: rgba(239,68,68,0.14); }
+
 .table-wrapper { overflow-x: auto; }
 
 table {
@@ -896,6 +1467,238 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   padding: 0.5rem 0.75rem;
 }
 
+.field-warn {
+  font-size: 0.72rem;
+  color: #fb923c;
+  margin-top: 3px;
+  display: block;
+}
+
+.label-hint {
+  font-size: 0.68rem;
+  color: #4ade80;
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+/* ── Slot picker ── */
+.slots-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+}
+
+.slot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #2a2a2a;
+  background: #0d0d0d;
+  color: #9ca3af;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.slot-disponible:hover {
+  background: rgba(74,222,128,0.08);
+  border-color: rgba(74,222,128,0.4);
+  color: #4ade80;
+}
+
+.slot-selected {
+  background: rgba(74,222,128,0.15) !important;
+  border-color: #4ade80 !important;
+  color: #4ade80 !important;
+  font-weight: 700;
+}
+
+.slot-ocupado {
+  opacity: 0.4;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.slot-tag {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: rgba(255,255,255,0.05);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.slots-empty {
+  color: #6b7280;
+  font-size: 0.82rem;
+  padding: 0.5rem 0;
+}
+
+.field-hint {
+  font-size: 0.72rem;
+  color: #4b5563;
+  margin-top: 4px;
+  display: block;
+}
+
+.warn-hint { color: #f59e0b; }
+
+/* Box especialista asignado */
+.fisio-asignado-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(74,222,128,0.06);
+  border: 1px solid rgba(74,222,128,0.25);
+  border-radius: 7px;
+  padding: 0.6rem 0.75rem;
+  gap: 0.5rem;
+}
+.fa-info { display: flex; align-items: center; gap: 0.65rem; }
+.fa-nombre { color: #e5e7eb; font-size: 0.875rem; font-weight: 600; }
+.fa-badge {
+  background: rgba(74,222,128,0.12);
+  color: #4ade80;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.fisio-asignado-box svg { color: #374151; flex-shrink: 0; }
+
+/* ── Time Spinner ── */
+.time-spinner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #1a1a2e;
+  border: 1px solid #2d2d44;
+  border-radius: 6px;
+  padding: 4px 10px;
+  width: fit-content;
+  height: 38px;
+}
+.ts-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.ts-btn {
+  background: none;
+  border: none;
+  color: #4ade80;
+  font-size: 0.55rem;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.ts-btn:hover {
+  background: rgba(74,222,128,0.12);
+}
+.ts-val {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  min-width: 2ch;
+  text-align: center;
+}
+.ts-sep {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #4ade80;
+  margin: 0 1px;
+  align-self: center;
+}
+.ts-ampm .ts-val {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  min-width: 3ch;
+}
+
+/* ── Banner de horario ── */
+.horario-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  background: rgba(74,222,128,0.05);
+  border: 1px solid rgba(74,222,128,0.2);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  color: #4ade80;
+  font-size: 0.76rem;
+}
+.horario-banner svg { flex-shrink: 0; margin-top: 1px; }
+.hb-title { font-weight: 700; margin-right: 4px; }
+.hb-slot {
+  display: inline-block;
+  background: rgba(74,222,128,0.1);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 2px 2px 0 0;
+  color: #6ee7b7;
+  font-size: 0.7rem;
+}
+
+/* ── Toast de aviso (horario fuera de rango pero guardado) ── */
+.aviso-toast-wrap {
+  position: fixed;
+  bottom: 1.75rem;
+  right: 1.75rem;
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: #2d1f00;
+  border: 1px solid rgba(251,146,60,0.4);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  cursor: pointer;
+  color: #fb923c;
+}
+.aviso-toast-wrap svg { flex-shrink: 0; margin-top: 2px; }
+.avt-title { font-size: 0.82rem; font-weight: 700; margin-bottom: 2px; }
+.avt-msg   { font-size: 0.75rem; color: #d97706; line-height: 1.4; }
+
+.success-toast-wrap {
+  position: fixed;
+  bottom: 1.75rem;
+  right: 1.75rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: #052e16;
+  border: 1px solid rgba(74,222,128,0.3);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  z-index: 9999;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  cursor: pointer;
+  max-width: 320px;
+  color: #4ade80;
+}
+.success-toast-wrap svg { flex-shrink: 0; margin-top: 2px; }
+
+.aviso-toast-enter-active { animation: toastSlide 0.3s ease; }
+.aviso-toast-leave-active { animation: toastSlide 0.25s ease reverse; }
+@keyframes toastSlide {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
 .modal-actions {
   display: flex;
   gap: 0.6rem;
@@ -959,6 +1762,31 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   border-color: #3a3a3a;
 }
 
+.btn-accion-delete {
+  color: #6b7280;
+  padding: 0.3rem 0.5rem;
+}
+.btn-accion-delete:hover {
+  background: rgba(239,68,68,0.1) !important;
+  color: #f87171 !important;
+  border-color: rgba(239,68,68,0.3) !important;
+}
+
+.delete-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: #f87171;
+  font-size: 0.8rem;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 7px;
+  padding: 0.65rem 0.85rem;
+  margin-top: 1rem;
+  line-height: 1.4;
+}
+.delete-warning svg { flex-shrink: 0; margin-top: 1px; }
+
 /* Estado cell con botón de editar */
 .estado-cell {
   display: flex;
@@ -1015,4 +1843,68 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   color: #d1d5db;
   font-weight: 500;
 }
+
+/* ── Zona eliminar cita ── */
+.delete-zone {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #1c1c1c;
+}
+
+.btn-eliminar-cita {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.3rem 0;
+  font-family: inherit;
+  transition: color 0.15s;
+}
+.btn-eliminar-cita:hover { color: #f87171; }
+
+.delete-confirm-msg {
+  color: #f87171;
+  font-size: 0.8rem;
+  margin-bottom: 0.6rem;
+  line-height: 1.4;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-confirmar-eliminar {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.35);
+  color: #f87171;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-confirmar-eliminar:hover:not(:disabled) { background: rgba(239,68,68,0.25); }
+.btn-confirmar-eliminar:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-cancelar-eliminar {
+  background: #1c1c1c;
+  border: 1px solid #2a2a2a;
+  color: #9ca3af;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-cancelar-eliminar:hover { background: #2a2a2a; color: #d1d5db; }
 </style>

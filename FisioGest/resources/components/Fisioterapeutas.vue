@@ -34,6 +34,8 @@
               <th>Nombre Completo</th>
               <th>Especialidad</th>
               <th>Teléfono</th>
+              <th>Horario de Atención</th>
+              <th>Acceso al Portal</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -51,6 +53,12 @@
               <td class="td-nombre">{{ f.nombre }}</td>
               <td class="td-esp">{{ f.especialidad }}</td>
               <td class="td-tel">{{ f.telefono || '—' }}</td>
+              <td class="td-horario">
+                <template v-if="resumenHorario(f).length">
+                  <span v-for="slot in resumenHorario(f)" :key="slot" class="horario-chip">{{ slot }}</span>
+                </template>
+                <span v-else class="horario-vacio">Sin configurar</span>
+              </td>
               <td>
                 <label class="toggle-label">
                   <input type="checkbox" v-model="f.activo" @change="toggleActivo(f)" />
@@ -62,9 +70,18 @@
                   </span>
                 </label>
               </td>
+              <td>
+                <div v-if="f.usuarioId" class="acceso-ok">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  <span>{{ f.correoUsuario }}</span>
+                </div>
+                <button v-else class="btn-crear-acceso" @click="openCredModal(f)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+                  Crear acceso
+                </button>
+              </td>
               <td class="td-actions">
                 <button class="btn-editar" @click="openModal(f)">Editar</button>
-                <button class="btn-horario" @click="openEditHorario(f)">Horario</button>
                 <button class="btn-eliminar" @click="eliminar(f)">Eliminar</button>
               </td>
             </tr>
@@ -116,6 +133,35 @@
                   <option :value="true">Activo</option>
                   <option :value="false">Inactivo</option>
                 </select>
+              </div>
+            </div>
+
+            <!-- Credenciales: requeridas al crear, opcionales al editar -->
+            <div class="cred-section">
+              <div class="cred-section-label">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                {{ editando ? 'Actualizar credenciales (opcional)' : 'Acceso al sistema' }}
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label>Correo electrónico</label>
+                  <input
+                    v-model="form.correo"
+                    type="email"
+                    placeholder="correo@ejemplo.com"
+                    :required="!editando"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>{{ editando ? 'Nueva contraseña' : 'Contraseña inicial' }}</label>
+                  <input
+                    v-model="form.contrasena"
+                    type="password"
+                    :placeholder="editando ? 'Dejar vacío para no cambiar' : 'Mínimo 8 caracteres'"
+                    :minlength="editando ? undefined : 8"
+                    :required="!editando"
+                  />
+                </div>
               </div>
             </div>
 
@@ -174,6 +220,40 @@
       </div>
     </Teleport>
 
+    <!-- ── Modal Crear Credenciales ── -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showCredModal" @click.self="showCredModal = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Crear acceso — {{ credFisio?.nombre }}</h3>
+            <button class="modal-close" @click="showCredModal = false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <p class="cred-hint">Asigna un correo y contraseña para que este especialista pueda ingresar a su portal.</p>
+          <form class="modal-form" @submit.prevent="guardarCredenciales">
+            <div class="form-group">
+              <label>Correo electrónico</label>
+              <input v-model="credForm.correo" type="email" placeholder="correo@ejemplo.com" required />
+            </div>
+            <div class="form-group">
+              <label>Contraseña inicial</label>
+              <input v-model="credForm.contrasena" type="password" placeholder="Mínimo 8 caracteres" minlength="8" required />
+            </div>
+            <p v-if="credError" class="cred-error">{{ credError }}</p>
+            <div class="modal-actions">
+              <button type="submit" class="btn-guardar" :disabled="credGuardando">
+                {{ credGuardando ? 'Guardando...' : 'Crear credenciales' }}
+              </button>
+              <button type="button" class="btn-cancelar" @click="showCredModal = false">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- ── Toast ── -->
     <Teleport to="body">
       <div class="toast" :class="toast.type" v-if="toast.visible">
@@ -190,11 +270,16 @@ import AppLayout from '@/components/AppLayout.vue'
 
 const showModal       = ref(false)
 const showEditHorario = ref(false)
+const showCredModal   = ref(false)
 const editando        = ref(null)
 const horarioFisio    = ref(null)
 const horarioForm     = ref({})
 const fisioterapeutas = ref([])
 const toast           = ref({ visible: false, msg: '', type: 'success' })
+const credFisio       = ref(null)
+const credForm        = ref({ correo: '', contrasena: '' })
+const credError       = ref('')
+const credGuardando   = ref(false)
 
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
@@ -209,9 +294,29 @@ function defaultHorario() {
   }
 }
 
-const form = ref({ nombre: '', telefono: '', especialidad: 'Diagnóstico', activo: true })
+const form = ref({ nombre: '', telefono: '', especialidad: 'Diagnóstico', activo: true, correo: '', contrasena: '' })
 
 const activos = computed(() => fisioterapeutas.value.filter(f => f.activo).length)
+
+// Genera chips de resumen del horario para la tabla
+const ABREV = { lun:'Lun', mar:'Mar', mie:'Mié', jue:'Jue', vie:'Vie', sab:'Sáb', dom:'Dom' }
+const MAPA_ADMIN = { 'Lunes':'lun','Martes':'mar','Miércoles':'mie','Jueves':'jue','Viernes':'vie','Sábado':'sab','Domingo':'dom' }
+const ORDEN = ['lun','mar','mie','jue','vie','sab','dom']
+
+function resumenHorario(f) {
+  if (!f.horario) return []
+  const raw = typeof f.horario === 'string' ? JSON.parse(f.horario) : f.horario
+  // Normalizar claves
+  const h = {}
+  for (const [k, v] of Object.entries(raw)) {
+    const clave = MAPA_ADMIN[k] ?? k
+    h[clave] = { activo: v.activo ?? false, entrada: v.entrada ?? v.inicio ?? '', salida: v.salida ?? v.fin ?? '' }
+  }
+  return ORDEN.filter(d => h[d]?.activo).map(d => {
+    const { entrada, salida } = h[d]
+    return entrada && salida ? `${ABREV[d]} ${entrada}–${salida}` : ABREV[d]
+  })
+}
 
 function showToast(msg, type = 'success') {
   toast.value = { visible: true, msg, type }
@@ -223,12 +328,14 @@ onMounted(async () => {
     const res  = await fetch('/api/fisioterapeutas')
     const data = await res.json()
     fisioterapeutas.value = data.map(f => ({
-      id:           f.fisioterapeuta_id,
-      nombre:       `${f.nombre} ${f.apellido}`.trim(),
-      especialidad: f.especialidad ?? 'Diagnóstico',
-      telefono:     f.telefono ?? '',
-      activo:       !!f.activo,
-      horario:      f.horario ?? defaultHorario(),
+      id:            f.fisioterapeuta_id,
+      nombre:        `${f.nombre} ${f.apellido}`.trim(),
+      especialidad:  f.especialidad ?? 'Diagnóstico',
+      telefono:      f.telefono ?? '',
+      activo:        !!f.activo,
+      horario:       f.horario ?? defaultHorario(),
+      usuarioId:     f.usuario_id ?? null,
+      correoUsuario: f.correo_usuario ?? null,
     }))
   } catch (e) {
     console.error('Error al cargar fisioterapeutas:', e)
@@ -239,8 +346,8 @@ onMounted(async () => {
 function openModal(item) {
   editando.value = item
   form.value = item
-    ? { nombre: item.nombre, telefono: item.telefono ?? '', especialidad: item.especialidad, activo: item.activo }
-    : { nombre: '', telefono: '', especialidad: 'Diagnóstico', activo: true }
+    ? { nombre: item.nombre, telefono: item.telefono ?? '', especialidad: item.especialidad, activo: item.activo, correo: item.correoUsuario ?? '', contrasena: '' }
+    : { nombre: '', telefono: '', especialidad: 'Diagnóstico', activo: true, correo: '', contrasena: '' }
   showModal.value = true
 }
 
@@ -259,19 +366,29 @@ async function guardar() {
     }
 
     if (editando.value) {
-      await fetch(`/api/fisioterapeutas/${editando.value.id}`, {
+      if (form.value.correo)    payload.correo    = form.value.correo
+      if (form.value.contrasena) payload.contrasena = form.value.contrasena
+      const res  = await fetch(`/api/fisioterapeutas/${editando.value.id}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body:    JSON.stringify(payload),
       })
+      const data = await res.json()
+      if (!res.ok) { showToast(data.message || 'Error al guardar', 'error'); return }
       const idx = fisioterapeutas.value.findIndex(f => f.id === editando.value.id)
-      if (idx !== -1) fisioterapeutas.value[idx] = { ...fisioterapeutas.value[idx], ...form.value }
+      if (idx !== -1) {
+        fisioterapeutas.value[idx] = {
+          ...fisioterapeutas.value[idx],
+          ...form.value,
+          correoUsuario: form.value.correo || fisioterapeutas.value[idx].correoUsuario,
+        }
+      }
       showToast('Fisioterapeuta actualizado correctamente')
     } else {
       const res  = await fetch('/api/fisioterapeutas', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body:    JSON.stringify(payload),
+        body:    JSON.stringify({ ...payload, correo: form.value.correo, contrasena: form.value.contrasena }),
       })
       const data = await res.json()
       fisioterapeutas.value.push({ id: data.id, ...form.value, horario: defaultHorario() })
@@ -323,6 +440,42 @@ function openEditHorario(f) {
 function closeEditHorario() {
   showEditHorario.value = false
   horarioFisio.value    = null
+}
+
+function openCredModal(f) {
+  credFisio.value  = f
+  credForm.value   = { correo: '', contrasena: '' }
+  credError.value  = ''
+  showCredModal.value = true
+}
+
+async function guardarCredenciales() {
+  credGuardando.value = true
+  credError.value     = ''
+  try {
+    const res  = await fetch(`/api/fisioterapeutas/${credFisio.value.id}/credenciales`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify(credForm.value),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      credError.value = data.message || 'Error al crear credenciales.'
+      return
+    }
+    // Actualizar en la lista local
+    const idx = fisioterapeutas.value.findIndex(f => f.id === credFisio.value.id)
+    if (idx !== -1) {
+      fisioterapeutas.value[idx].usuarioId     = true
+      fisioterapeutas.value[idx].correoUsuario = credForm.value.correo
+    }
+    showCredModal.value = false
+    showToast('Acceso creado correctamente')
+  } catch {
+    credError.value = 'Error de conexión.'
+  } finally {
+    credGuardando.value = false
+  }
 }
 
 async function guardarHorario() {
@@ -559,6 +712,26 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 
 /* Action buttons */
 .td-actions { display: flex; gap: 0.4rem; align-items: center; }
+
+.td-horario {
+  max-width: 220px;
+}
+.horario-chip {
+  display: inline-block;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.68rem;
+  margin: 2px 2px 2px 0;
+  white-space: nowrap;
+}
+.horario-vacio {
+  color: #4b5563;
+  font-size: 0.78rem;
+  font-style: italic;
+}
 
 .btn-editar {
   background: #1c1c1c;
@@ -802,6 +975,71 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   color: #6b7280;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* ── Acceso al portal ── */
+.acceso-ok {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #4ade80;
+  font-size: 0.78rem;
+}
+.acceso-ok span {
+  color: #6b7280;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  white-space: nowrap;
+}
+.btn-crear-acceso {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(251,191,36,0.08);
+  color: #fbbf24;
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 5px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-crear-acceso:hover { background: rgba(251,191,36,0.15); }
+
+.cred-section {
+  border: 1px solid #1c1c1c;
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #0d0d0d;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.cred-section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.cred-hint {
+  color: #6b7280;
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+.cred-error {
+  color: #f87171;
+  font-size: 0.8rem;
+  margin-top: -0.25rem;
 }
 
 /* ── Teléfono en tabla ── */

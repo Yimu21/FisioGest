@@ -12,6 +12,7 @@ import FisioDashboard   from '../components/FisioDashboard.vue'
 import FisioPacientes   from '../components/FisioPacientes.vue'
 import FisioAsignaciones from '../components/FisioAsignaciones.vue'
 import FisioCitas       from '../components/FisioCitas.vue'
+import FisioAgenda      from '../components/FisioAgenda.vue'
 
 const routes = [
   // ── Pública ──────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ const routes = [
   { path: '/fisio/pacientes',    component: FisioPacientes,    meta: { requiresAuth: true, role: 'fisioterapeuta' } },
   { path: '/fisio/asignaciones', component: FisioAsignaciones, meta: { requiresAuth: true, role: 'fisioterapeuta' } },
   { path: '/fisio/citas',        component: FisioCitas,        meta: { requiresAuth: true, role: 'fisioterapeuta' } },
+  { path: '/fisio/agenda',       component: FisioAgenda,       meta: { requiresAuth: true, role: 'fisioterapeuta' } },
 
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]

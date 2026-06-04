@@ -47,6 +47,7 @@ export const citaService = {
   create:       (data) => api.post('/citas', data),
   update:       (id, data) => api.put(`/citas/${id}`, data),
   updateEstado: (id, estado) => api.patch(`/citas/${id}`, { estado }),
+  delete:       (id) => api.delete(`/citas/${id}`),
 }
 
 export const pacienteService = {
@@ -78,4 +79,25 @@ export const asignacionesService = {
   getAll:  ()     => api.get('/asignaciones'),
   create:  (data) => api.post('/asignaciones', data),
   liberar: (id)   => api.patch(`/asignaciones/${id}/liberar`),
+}
+
+export const agendaService = {
+  getHorario:     ()        => api.get('/fisio/mi-horario'),
+  saveHorario:    (horario) => api.put('/fisio/mi-horario', { horario }),
+  getEventos:     ()        => api.get('/fisio/eventos'),
+  createEvento:   (data)    => api.post('/fisio/eventos', data),
+  updateEvento:   (id, data) => api.put(`/fisio/eventos/${id}`, data),
+  deleteEvento:   (id)      => api.delete(`/fisio/eventos/${id}`),
+}
+
+export const notificacionesService = {
+  getAll:       () => api.get('/admin/notificaciones'),
+  marcarLeida:  (id) => api.patch(`/admin/notificaciones/${id}/leida`),
+  marcarTodas:  () => api.patch('/admin/notificaciones/marcar-todas'),
+}
+
+export const fisioNotificacionesService = {
+  getAll:      () => api.get('/fisio/notificaciones'),
+  marcarLeida: (id) => api.patch(`/fisio/notificaciones/${id}/leida`),
+  marcarTodas: () => api.patch('/fisio/notificaciones/marcar-todas'),
 }

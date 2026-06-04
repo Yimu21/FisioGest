@@ -109,15 +109,24 @@
                   class="slot-cell"
                   :class="{ 'today-slot': d.isToday }"
                 >
-                  <div
-                    v-for="cita in citasEnSlot(d.date, slot)"
-                    :key="cita.cita_id"
-                    class="appt"
-                    :class="colorMap[cita.estado] || 'appt-blue'"
-                  >
-                    <span class="appt-name">{{ nombrePaciente(cita.paciente_id) }}</span>
-                    <span class="appt-info">{{ (cita.fecha_hora || '').slice(11,16) }} &middot; {{ estadoLabel[cita.estado] || cita.estado }}</span>
-                  </div>
+                  <template v-for="item in citasEnSlot(d.date, slot)" :key="item._tipo === 'cita' ? 'c'+item.cita_id : 'e'+item.evento_id">
+                    <!-- Cita (clickeable para cambiar estado) -->
+                    <div
+                      v-if="item._tipo === 'cita'"
+                      class="appt appt-clickable"
+                      :class="colorMap[item.estado] || 'appt-blue'"
+                      @click="abrirModalEstado(item)"
+                      :title="'Click para cambiar estado'"
+                    >
+                      <span class="appt-name">{{ nombrePaciente(item.paciente_id) }}</span>
+                      <span class="appt-info">{{ (item.fecha_hora || '').slice(11,16) }} &middot; {{ estadoLabel[item.estado] || item.estado }}</span>
+                    </div>
+                    <!-- Evento personal -->
+                    <div v-else class="appt appt-evento">
+                      <span class="appt-name">{{ item.titulo }}</span>
+                      <span class="appt-info">{{ item.hora_inicio ? item.hora_inicio.slice(0,5) : '' }} &middot; {{ item.tipo }}</span>
+                    </div>
+                  </template>
                 </td>
               </tr>
             </tbody>
@@ -134,9 +143,90 @@
           <span class="legend-item"><span class="legend-dot appt-green"></span> Completada</span>
           <span class="legend-item"><span class="legend-dot appt-yellow"></span> Reprogramada</span>
           <span class="legend-item"><span class="legend-dot appt-red"></span> Cancelada</span>
+          <span class="legend-item"><span class="legend-dot appt-evento"></span> Evento personal</span>
         </div>
       </template>
     </div>
+
+    <!-- Modal: Cambiar estado de cita -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showEstadoModal" @click.self="cerrarModalEstado">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h3>Actualizar Estado de Cita</h3>
+            <button class="modal-close" @click="cerrarModalEstado">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="estado-info" v-if="citaSeleccionada">
+            <div class="info-row">
+              <span class="info-label">Paciente</span>
+              <span class="info-val">{{ nombrePaciente(citaSeleccionada.paciente_id) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Fecha y hora</span>
+              <span class="info-val info-fecha">{{ formatFecha(citaSeleccionada.fecha_hora) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Estado actual</span>
+              <span class="estado-badge" :class="citaSeleccionada.estado">
+                {{ estadoLabel[citaSeleccionada.estado] || citaSeleccionada.estado }}
+              </span>
+            </div>
+          </div>
+
+          <div class="estado-opciones">
+            <button
+              v-for="op in opcionesEstado.filter(o => o.value !== citaSeleccionada?.estado)"
+              :key="op.value"
+              class="btn-estado-op"
+              :class="[op.cls, { activo: nuevoEstado === op.value }]"
+              @click="nuevoEstado = op.value"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline v-if="op.value === 'atendida'" points="20 6 9 17 4 12"/>
+                <line v-else-if="op.value === 'cancelada'" x1="18" y1="6" x2="6" y2="18"/>
+                <line v-if="op.value === 'cancelada'" x1="6" y1="6" x2="18" y2="18"/>
+                <circle v-if="op.value === 'programada'" cx="12" cy="12" r="10"/>
+              </svg>
+              {{ op.label }}
+            </button>
+          </div>
+
+          <p v-if="errorEstado" class="error-msg">{{ errorEstado }}</p>
+
+          <div class="modal-actions" style="margin-top:1rem;">
+            <button class="btn-guardar" @click="guardarEstado" :disabled="actualizando || !nuevoEstado">
+              {{ actualizando ? 'Guardando...' : 'Confirmar cambio' }}
+            </button>
+            <button class="btn-cancelar" @click="cerrarModalEstado">Cancelar</button>
+          </div>
+
+          <p class="notif-hint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            El administrador recibirá una notificación con este cambio.
+          </p>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Toast -->
+    <Teleport to="body">
+      <Transition name="toast-slide">
+        <div v-if="toast.visible" class="fisio-toast" :class="toast.type">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline v-if="toast.type === 'ok'" points="20 6 9 17 4 12"/>
+            <circle v-else cx="12" cy="12" r="10"/>
+          </svg>
+          <span>{{ toast.msg }}</span>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Modal sesión -->
     <Teleport to="body">
@@ -199,7 +289,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import FisioLayout from '@/components/FisioLayout.vue'
-import { citaService, fisioService, getUser, saveUser } from '@/services/api'
+import { citaService, fisioService, agendaService, getUser, saveUser } from '@/services/api'
 import axios from 'axios'
 
 const loading    = ref(true)
@@ -209,6 +299,7 @@ const weekOffset = ref(0)
 
 const misCitas          = ref([])
 const misPacientesLista = ref([])
+const misEventos        = ref([])
 
 const currentUser = computed(() => getUser())
 const userName    = computed(() => currentUser.value?.nombre ?? 'Fisioterapeuta')
@@ -219,7 +310,7 @@ const sesionForm = ref({ paciente_id: '', fecha: '', hora: '', tipo: 'terapia', 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 const misPacientes     = computed(() => misPacientesLista.value.length)
 const misCitasHoy      = computed(() => {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateISO()
   return misCitas.value.filter(c => (c.fecha_hora ?? '').startsWith(today)).length
 })
 const citasCompletadas = computed(() => misCitas.value.filter(c => c.estado === 'atendida').length)
@@ -252,19 +343,25 @@ const estadoLabel = {
 function getMonday(offset) {
   const d   = new Date()
   const day = d.getDay()
-  const mon = new Date(d)
-  mon.setDate(d.getDate() + (day === 0 ? -6 : 1 - day) + offset * 7)
-  mon.setHours(0, 0, 0, 0)
+  const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  mon.setDate(mon.getDate() + (day === 0 ? -6 : 1 - day) + offset * 7)
   return mon
+}
+
+function localDateISO(d = new Date()) {
+  const y  = d.getFullYear()
+  const m  = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
 }
 
 const weekDays = computed(() => {
   const mon   = getMonday(weekOffset.value)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateISO()
   return DAY_NAMES.map((name, i) => {
     const d   = new Date(mon)
     d.setDate(mon.getDate() + i)
-    const iso = d.toISOString().slice(0, 10)
+    const iso = localDateISO(d)
     return { label: `${name} ${d.getDate()}`, date: iso, isToday: iso === today }
   })
 })
@@ -294,8 +391,21 @@ const agendaSemanal = computed(() => {
     const m    = parseInt(fh.slice(14, 16))
     const slot = String(h).padStart(2, '0') + ':' + (m < 30 ? '00' : '30')
     if (!agenda[date][slot]) agenda[date][slot] = []
-    agenda[date][slot].push(cita)
+    agenda[date][slot].push({ _tipo: 'cita', ...cita })
   }
+
+  for (const ev of misEventos.value) {
+    if (!ev.fecha) continue
+    const date = ev.fecha.slice(0, 10)
+    if (!(date in agenda)) continue
+    const hora = ev.hora_inicio ?? '00:00'
+    const h    = parseInt(hora.slice(0, 2))
+    const m    = parseInt(hora.slice(3, 5))
+    const slot = String(h).padStart(2, '0') + ':' + (m < 30 ? '00' : '30')
+    if (!agenda[date][slot]) agenda[date][slot] = []
+    agenda[date][slot].push({ _tipo: 'evento', ...ev })
+  }
+
   return agenda
 })
 
@@ -311,6 +421,65 @@ function citasEnSlot(date, slot) {
 function nombrePaciente(id) {
   const p = misPacientesLista.value.find(p => p.paciente_id === id)
   return p ? `${p.nombre} ${p.apellido}` : `Paciente #${id}`
+}
+
+// ── Modal cambio de estado ────────────────────────────────────────────────────
+const showEstadoModal  = ref(false)
+const citaSeleccionada = ref(null)
+const nuevoEstado      = ref('')
+const actualizando     = ref(false)
+const errorEstado      = ref('')
+const toast            = ref({ visible: false, type: 'ok', msg: '' })
+let   toastTimer       = null
+
+const opcionesEstado = [
+  { value: 'atendida',   label: 'Marcar como atendida',  cls: 'op-green'  },
+  { value: 'cancelada',  label: 'Cancelar cita',          cls: 'op-red'    },
+  { value: 'programada', label: 'Restablecer programada', cls: 'op-blue'   },
+]
+
+function formatFecha(fechaHora) {
+  if (!fechaHora) return '—'
+  return new Date(fechaHora).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function abrirModalEstado(cita) {
+  citaSeleccionada.value = cita
+  nuevoEstado.value      = ''   // sin preselección; el estado actual queda oculto en las opciones
+  errorEstado.value      = ''
+  showEstadoModal.value  = true
+}
+
+function cerrarModalEstado() {
+  showEstadoModal.value  = false
+  citaSeleccionada.value = null
+  errorEstado.value      = ''
+}
+
+function mostrarToast(type, msg) {
+  clearTimeout(toastTimer)
+  toast.value = { visible: true, type, msg }
+  toastTimer  = setTimeout(() => { toast.value.visible = false }, 3500)
+}
+
+async function guardarEstado() {
+  if (!citaSeleccionada.value || nuevoEstado.value === citaSeleccionada.value.estado) return
+  actualizando.value = true
+  errorEstado.value  = ''
+  try {
+    await axios.patch(
+      `/api/fisio/citas/${citaSeleccionada.value.cita_id}/estado`,
+      { estado: nuevoEstado.value },
+      { headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, Accept: 'application/json' } }
+    )
+    await cargar()
+    cerrarModalEstado()
+    mostrarToast('ok', `Cita marcada como "${estadoLabel[nuevoEstado.value] || nuevoEstado.value}". El administrador fue notificado.`)
+  } catch (e) {
+    errorEstado.value = e?.response?.data?.message || 'Error al actualizar. Intenta de nuevo.'
+  } finally {
+    actualizando.value = false
+  }
 }
 
 // ── Acciones ──────────────────────────────────────────────────────────────────
@@ -343,12 +512,14 @@ async function cargar() {
         saveUser(meRes.data, token)
       } catch {}
     }
-    const [cr, pr] = await Promise.allSettled([
+    const [cr, pr, er] = await Promise.allSettled([
       fisioService.misCitas(),
       fisioService.misPacientes(),
+      agendaService.getEventos(),
     ])
     if (cr.status === 'fulfilled') misCitas.value          = cr.value.data
     if (pr.status === 'fulfilled') misPacientesLista.value = pr.value.data
+    if (er.status === 'fulfilled') misEventos.value        = er.value.data
   } finally {
     loading.value = false
   }
@@ -419,13 +590,15 @@ onMounted(cargar)
 .today-slot { background: rgba(74,222,128,0.02); }
 
 /* Cita card */
-.appt { display: flex; flex-direction: column; padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; border-left: 3px solid; cursor: pointer; transition: opacity 0.15s; }
-.appt:hover { opacity: 0.8; }
+.appt { display: flex; flex-direction: column; padding: 3px 6px; border-radius: 4px; margin-bottom: 2px; border-left: 3px solid; }
+.appt-clickable { cursor: pointer; transition: filter 0.15s, transform 0.1s; }
+.appt-clickable:hover { filter: brightness(1.2); transform: scale(1.02); }
 
 .appt-blue   { background: #1e3a8a; border-color: #3b82f6; }
 .appt-green  { background: #14532d; border-color: #22c55e; }
 .appt-red    { background: #7f1d1d; border-color: #dc2626; }
 .appt-yellow { background: #78350f; border-color: #f59e0b; }
+.appt-evento { background: #2e1065; border-color: #a855f7; }
 
 .appt-name { font-size: 0.7rem; font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
 .appt-info { font-size: 0.62rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -460,4 +633,64 @@ onMounted(cargar)
 .btn-guardar:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-cancelar { flex: 1; background: #1c1c1c; color: #9ca3af; border: 1px solid #2a2a2a; border-radius: 7px; padding: 0.65rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .btn-cancelar:hover { background: #2a2a2a; color: #d1d5db; }
+
+/* Modal cambio de estado */
+.modal-sm { max-width: 380px; }
+
+.estado-info {
+  background: #0d0d0d;
+  border: 1px solid #1c1c1c;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+.info-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; }
+.info-label { color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.4px; }
+.info-val { color: #d1d5db; }
+.info-fecha { color: #38bdf8; }
+
+.estado-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
+.estado-badge.programada { background: rgba(59,130,246,0.15); color: #93c5fd; }
+.estado-badge.atendida   { background: rgba(74,222,128,0.15); color: #4ade80; }
+.estado-badge.cancelada  { background: rgba(239,68,68,0.15);  color: #f87171; }
+
+.estado-opciones { display: flex; flex-direction: column; gap: 0.45rem; margin-bottom: 0.5rem; }
+
+.btn-estado-op {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.6rem 0.9rem; border-radius: 8px;
+  border: 1px solid #2a2a2a; background: #0d0d0d;
+  color: #9ca3af; font-size: 0.85rem; font-weight: 500;
+  cursor: pointer; text-align: left; font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-estado-op:hover { background: #1a1a1a; color: #e5e7eb; }
+.btn-estado-op.activo.op-green  { background: rgba(34,197,94,0.12);  border-color: #22c55e; color: #4ade80; }
+.btn-estado-op.activo.op-red    { background: rgba(239,68,68,0.12);  border-color: #dc2626; color: #f87171; }
+.btn-estado-op.activo.op-blue   { background: rgba(59,130,246,0.12); border-color: #3b82f6; color: #93c5fd; }
+
+.error-msg { color: #f87171; font-size: 0.82rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 6px; padding: 0.5rem 0.75rem; margin-top: 0.5rem; }
+
+.notif-hint {
+  display: flex; align-items: center; gap: 0.4rem;
+  color: #4b5563; font-size: 0.72rem; margin-top: 0.75rem;
+}
+
+/* Toast */
+.fisio-toast {
+  position: fixed; bottom: 1.75rem; right: 1.75rem; z-index: 9999;
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.75rem 1.1rem; border-radius: 10px;
+  font-size: 0.82rem; font-weight: 500; max-width: 360px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.fisio-toast.ok  { background: #052e16; border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+.fisio-toast.err { background: #2d1111; border: 1px solid rgba(239,68,68,0.3);  color: #f87171; }
+
+.toast-slide-enter-active { animation: toastIn 0.3s ease; }
+.toast-slide-leave-active { animation: toastIn 0.25s ease reverse; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 </style>
