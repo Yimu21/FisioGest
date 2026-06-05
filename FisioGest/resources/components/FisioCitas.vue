@@ -132,7 +132,10 @@
               </label>
 
               <template v-if="slotsDelDia.length > 0">
-                <p v-if="slotsDelDia.every(s => s.ocupado)" class="slots-empty">
+                <div v-if="todoDiaBloqueado" class="slots-evento-aviso">
+                  📅 Tienes un evento personal que bloquea todo este día.
+                </div>
+                <p v-else-if="slotsDelDia.every(s => s.ocupado || s.bloqueado)" class="slots-empty">
                   No hay horarios disponibles para este día.
                 </p>
                 <div v-else class="slots-grid">
@@ -141,15 +144,21 @@
                     :key="s.hora"
                     type="button"
                     class="slot-btn"
-                    :class="{ 'slot-selected': form.hora === s.hora, 'slot-ocupado': s.ocupado, 'slot-disponible': !s.ocupado }"
-                    :disabled="s.ocupado"
+                    :class="{
+                      'slot-selected':   form.hora === s.hora,
+                      'slot-ocupado':    s.ocupado && !s.bloqueado,
+                      'slot-bloqueado':  s.bloqueado,
+                      'slot-disponible': !s.ocupado && !s.bloqueado,
+                    }"
+                    :disabled="s.ocupado || s.bloqueado"
                     @click="form.hora = s.hora"
                   >
                     {{ formatSlotLabel(s.hora) }}
-                    <span v-if="s.ocupado" class="slot-tag">Ocupado</span>
+                    <span v-if="s.bloqueado" class="slot-tag tag-bloqueado">Evento</span>
+                    <span v-else-if="s.ocupado" class="slot-tag">Ocupado</span>
                   </button>
                 </div>
-                <span v-if="!form.hora && form.fecha" class="field-warn">Selecciona una hora disponible.</span>
+                <span v-if="!form.hora && form.fecha && !todoDiaBloqueado" class="field-warn">Selecciona una hora disponible.</span>
               </template>
 
               <template v-else-if="form.fecha && advertenciaFecha">
@@ -211,7 +220,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import FisioLayout from '@/components/FisioLayout.vue'
 import { fisioService, agendaService, getUser } from '@/services/api'
 import axios from 'axios'
@@ -229,6 +238,40 @@ const errorMsg       = ref('')
 const miHorario      = ref(null)
 
 const form = ref({ paciente_id: '', fecha: '', hora: '', motivo: '' })
+
+// ── Eventos de agenda propios del fisio ───────────────────────────────────────
+const eventosDelDia    = ref([])
+const todoDiaBloqueado = ref(false)
+
+async function cargarEventosDia(fecha) {
+  eventosDelDia.value    = []
+  todoDiaBloqueado.value = false
+  if (!fecha || !fisioId.value) return
+  try {
+    const res = await axios.get(`/api/eventos-fisio/${fisioId.value}/${fecha}`)
+    eventosDelDia.value    = res.data
+    todoDiaBloqueado.value = res.data.some(e => !e.hora_inicio)
+  } catch {}
+}
+
+watch(() => form.value.fecha, (fecha) => {
+  form.value.hora = ''
+  cargarEventosDia(fecha)
+})
+
+function slotBloqueadoPorEvento(curMin) {
+  const slotFin = curMin + 60
+  for (const ev of eventosDelDia.value) {
+    if (!ev.hora_inicio) return true
+    const [eh, em] = ev.hora_inicio.split(':').map(Number)
+    const evStart  = eh * 60 + em
+    const evEnd    = ev.hora_fin
+      ? (() => { const [fh, fm] = ev.hora_fin.split(':').map(Number); return fh * 60 + fm })()
+      : 24 * 60
+    if (curMin < evEnd && slotFin > evStart) return true
+  }
+  return false
+}
 
 const currentUser = computed(() => getUser())
 const userName    = computed(() => currentUser.value?.nombre ?? 'Fisioterapeuta')
@@ -345,7 +388,8 @@ const slotsDelDia = computed(() => {
       const cStart   = ch * 60 + cm
       return cur < cStart + 60 && cur + 60 > cStart
     })
-    slots.push({ hora, ocupado })
+    const bloqueado = slotBloqueadoPorEvento(cur)
+    slots.push({ hora, ocupado, bloqueado })
     cur += 30
   }
   return slots
@@ -533,8 +577,11 @@ onMounted(cargar)
 .slot-disponible:hover { background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.4); color: #4ade80; }
 .slot-selected  { background: rgba(74,222,128,0.15) !important; border-color: #4ade80 !important; color: #4ade80 !important; font-weight: 700; }
 .slot-ocupado   { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
+.slot-bloqueado { opacity: 0.55; cursor: not-allowed; background: rgba(251,113,133,0.08) !important; border-color: rgba(251,113,133,0.3) !important; color: #fb7185 !important; }
 .slot-tag { font-size: 0.62rem; color: #6b7280; background: rgba(255,255,255,0.05); border-radius: 3px; padding: 1px 4px; }
+.tag-bloqueado { background: rgba(251,113,133,0.15); color: #fb7185; }
 .slots-empty { color: #6b7280; font-size: 0.82rem; padding: 0.5rem 0; }
+.slots-evento-aviso { background: rgba(251,113,133,0.08); border: 1px solid rgba(251,113,133,0.25); color: #fb7185; border-radius: 8px; padding: 0.65rem 0.9rem; font-size: 0.82rem; font-weight: 500; }
 
 .error-msg { color: #f87171; font-size: 0.82rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); border-radius: 6px; padding: 0.5rem 0.75rem; }
 

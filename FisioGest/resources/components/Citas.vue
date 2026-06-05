@@ -208,12 +208,59 @@
           <form class="modal-form" @submit.prevent="saveCita">
             <div class="form-group">
               <label>Paciente *</label>
-              <select v-model="form.paciente_id" required @change="onPacienteChange">
+
+              <!-- Select nativo: cuando no hay fisio seleccionado o el paciente ya tiene fisio -->
+              <select
+                v-if="!form.fisioterapeuta_id || fisioAsignadoPaciente"
+                v-model="form.paciente_id"
+                required
+                @change="onPacienteChange"
+              >
                 <option value="">-- Seleccione un paciente --</option>
                 <option v-for="p in pacientes" :key="p.paciente_id" :value="p.paciente_id">
                   {{ p.nombre }} {{ p.apellido }}
                 </option>
               </select>
+
+              <!-- Dropdown personalizado: cuando hay fisio libre seleccionado -->
+              <div v-else class="custom-select-wrapper" :class="{ open: dropdownPacienteAbierto }">
+                <button
+                  type="button"
+                  class="custom-select-btn"
+                  :class="{ 'has-value': form.paciente_id }"
+                  @click="dropdownPacienteAbierto = !dropdownPacienteAbierto"
+                >
+                  <span>
+                    {{ form.paciente_id
+                        ? pacientesParaDropdown.find(p => p.paciente_id == form.paciente_id)?.nombre + ' ' + pacientesParaDropdown.find(p => p.paciente_id == form.paciente_id)?.apellido
+                        : '-- Seleccione un paciente --' }}
+                  </span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                <div v-if="dropdownPacienteAbierto" class="custom-select-list">
+                  <div
+                    v-for="p in pacientesParaDropdown"
+                    :key="p.paciente_id"
+                    class="custom-select-item"
+                    :class="{
+                      'item-asignado':    p.asignadoAeste,
+                      'item-deshabilitado': p.deshabilitado,
+                      'item-seleccionado':  form.paciente_id == p.paciente_id,
+                    }"
+                    @click="!p.deshabilitado && seleccionarPacienteCustom(p)"
+                  >
+                    <span class="item-nombre">{{ p.nombre }} {{ p.apellido }}</span>
+                    <span v-if="p.asignadoAeste" class="item-badge badge-verde">✓ Asignado</span>
+                    <span v-else-if="p.deshabilitado" class="item-badge badge-gris">{{ p.nombreOtroFisio }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <span v-if="form.fisioterapeuta_id && !fisioAsignadoPaciente" class="field-hint">
+                <span style="color:#4ade80">Verde</span> = asignado a este especialista &nbsp;·&nbsp; Tachado = asignado a otro
+              </span>
             </div>
 
             <div class="form-group">
@@ -261,7 +308,11 @@
 
               <!-- Slot picker: fisio + fecha seleccionados y hay horario configurado -->
               <template v-if="slotsDelDia.length > 0">
-                <div v-if="slotsDelDia.every(s => s.ocupado)" class="slots-empty">
+                <!-- Aviso de día completo bloqueado por evento -->
+                <div v-if="todoDiaBloqueado" class="slots-evento-aviso">
+                  📅 El especialista tiene un evento personal que bloquea todo este día.
+                </div>
+                <div v-else-if="slotsDelDia.every(s => s.ocupado || s.bloqueado)" class="slots-empty">
                   No hay horarios disponibles para este día.
                 </div>
                 <div v-else class="slots-grid">
@@ -271,18 +322,20 @@
                     type="button"
                     class="slot-btn"
                     :class="{
-                      'slot-selected':  form.hora === s.hora,
-                      'slot-ocupado':   s.ocupado,
-                      'slot-disponible': !s.ocupado,
+                      'slot-selected':   form.hora === s.hora,
+                      'slot-ocupado':    s.ocupado && !s.bloqueado,
+                      'slot-bloqueado':  s.bloqueado,
+                      'slot-disponible': !s.ocupado && !s.bloqueado,
                     }"
-                    :disabled="s.ocupado"
+                    :disabled="s.ocupado || s.bloqueado"
                     @click="seleccionarSlot(s.hora)"
                   >
                     {{ formatSlotLabel(s.hora) }}
-                    <span v-if="s.ocupado" class="slot-tag">Ocupado</span>
+                    <span v-if="s.bloqueado" class="slot-tag tag-bloqueado">Evento</span>
+                    <span v-else-if="s.ocupado" class="slot-tag">Ocupado</span>
                   </button>
                 </div>
-                <span v-if="!form.hora && form.fecha" class="field-warn">Selecciona una hora disponible.</span>
+                <span v-if="!form.hora && form.fecha && !todoDiaBloqueado" class="field-warn">Selecciona una hora disponible.</span>
               </template>
 
               <!-- Fallback: sin horario configurado para este día -->
@@ -467,6 +520,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { citaService, pacienteService, fisioterapeutaService } from '@/services/api'
+import axios from 'axios'
 
 const citas      = ref([])
 const pacientes  = ref([])
@@ -504,6 +558,43 @@ const rangoHorario      = ref('')
 
 const DIAS_KEY   = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab']
 const MAPA_ADMIN = { 'Lunes':'lun','Martes':'mar','Miércoles':'mie','Jueves':'jue','Viernes':'vie','Sábado':'sab','Domingo':'dom' }
+
+// ── Eventos de agenda del fisioterapeuta seleccionado ─────────────────────────
+const eventosDelDia    = ref([])
+const todoDiaBloqueado = ref(false)
+
+async function cargarEventosFisio() {
+  eventosDelDia.value    = []
+  todoDiaBloqueado.value = false
+  const fisioId = form.value.fisioterapeuta_id
+  const fecha   = form.value.fecha
+  if (!fisioId || !fecha) return
+  try {
+    const res = await axios.get(`/api/eventos-fisio/${fisioId}/${fecha}`)
+    eventosDelDia.value    = res.data
+    todoDiaBloqueado.value = res.data.some(e => !e.hora_inicio)
+  } catch {}
+}
+
+watch(
+  () => [form.value.fisioterapeuta_id, form.value.fecha],
+  () => { form.value.hora = ''; cargarEventosFisio() }
+)
+
+// Devuelve true si el slot [curMin, curMin+60] solapa con algún evento
+function slotBloqueadoPorEvento(curMin) {
+  const slotFin = curMin + 60
+  for (const ev of eventosDelDia.value) {
+    if (!ev.hora_inicio) return true   // sin hora → todo el día bloqueado
+    const [eh, em] = ev.hora_inicio.split(':').map(Number)
+    const evStart  = eh * 60 + em
+    const evEnd    = ev.hora_fin
+      ? (() => { const [fh, fm] = ev.hora_fin.split(':').map(Number); return fh * 60 + fm })()
+      : 24 * 60
+    if (curMin < evEnd && slotFin > evStart) return true
+  }
+  return false
+}
 
 // ── Slot picker ───────────────────────────────────────────────────────────────
 // Devuelve la config normalizada {activo,entrada,salida} para el día seleccionado
@@ -556,7 +647,8 @@ const slotsDelDia = computed(() => {
       return cur < cStart + 60 && cur + 60 > cStart
     })
 
-    slots.push({ hora, ocupado })
+    const bloqueado = slotBloqueadoPorEvento(cur)
+    slots.push({ hora, ocupado, bloqueado })
     cur += 30
   }
   return slots
@@ -765,6 +857,55 @@ const fisioAsignadoPaciente = computed(() => {
   if (!form.value.paciente_id) return null
   const p = pacientes.value.find(p => p.paciente_id == form.value.paciente_id)
   return p?.fisioterapeuta_id || null
+})
+
+// Estado del dropdown personalizado de pacientes
+const dropdownPacienteAbierto = ref(false)
+
+function seleccionarPacienteCustom(p) {
+  form.value.paciente_id = p.paciente_id
+  dropdownPacienteAbierto.value = false
+  onPacienteChange()
+}
+
+// Cerrar dropdown al hacer click fuera
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-select-wrapper')) {
+      dropdownPacienteAbierto.value = false
+    }
+  })
+}
+
+// Helper: nombre del fisioterapeuta por ID
+function nombreFisioPorId(fisioId) {
+  if (!fisioId) return null
+  const f = fisioterapeutas.value.find(f => Number(f.fisioterapeuta_id) === Number(fisioId))
+  return f ? `${f.nombre} ${f.apellido}` : null
+}
+
+// Pacientes ordenados según el fisio seleccionado en el select libre:
+// - Asignados a ese fisio → primero, verde, habilitados
+// - Sin fisio asignado   → habilitados normales
+// - Asignados a otro fisio → deshabilitados al final, rojo, con nombre del fisio
+const pacientesParaDropdown = computed(() => {
+  const fisioId = form.value.fisioterapeuta_id
+  if (!fisioId || fisioAsignadoPaciente.value) return pacientes.value.map(p => ({ ...p, deshabilitado: false, asignadoAeste: false }))
+
+  return [...pacientes.value]
+    .map(p => {
+      const asignadoAeste = Number(p.fisioterapeuta_id) === Number(fisioId)
+      const deshabilitado = !!p.fisioterapeuta_id && !asignadoAeste
+      const nombreOtroFisio = deshabilitado ? nombreFisioPorId(p.fisioterapeuta_id) : null
+      return { ...p, asignadoAeste, sinFisio: !p.fisioterapeuta_id, deshabilitado, nombreOtroFisio }
+    })
+    .sort((a, b) => {
+      if (a.asignadoAeste && !b.asignadoAeste) return -1
+      if (!a.asignadoAeste && b.asignadoAeste) return  1
+      if (a.deshabilitado && !b.deshabilitado)  return  1
+      if (!a.deshabilitado && b.deshabilitado)  return -1
+      return 0
+    })
 })
 
 function onPacienteChange() {
@@ -1525,6 +1666,29 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   text-decoration: line-through;
 }
 
+.slot-bloqueado {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: rgba(251, 113, 133, 0.08) !important;
+  border-color: rgba(251, 113, 133, 0.3) !important;
+  color: #fb7185 !important;
+}
+
+.tag-bloqueado {
+  background: rgba(251, 113, 133, 0.15);
+  color: #fb7185;
+}
+
+.slots-evento-aviso {
+  background: rgba(251, 113, 133, 0.08);
+  border: 1px solid rgba(251, 113, 133, 0.25);
+  color: #fb7185;
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
 .slot-tag {
   font-size: 0.62rem;
   font-weight: 600;
@@ -1539,6 +1703,42 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   font-size: 0.82rem;
   padding: 0.5rem 0;
 }
+
+/* ── Dropdown personalizado de pacientes ─────────────────────────────────── */
+.custom-select-wrapper { position: relative; }
+
+.custom-select-btn {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  background: #0d0d0d; border: 1px solid #1c1c1c; border-radius: 7px;
+  padding: 0.6rem 0.75rem; color: #6b7280; font-size: 0.875rem; font-family: inherit;
+  cursor: pointer; text-align: left; transition: border-color 0.15s;
+}
+.custom-select-btn.has-value { color: #d1d5db; }
+.custom-select-btn:hover,
+.custom-select-wrapper.open .custom-select-btn { border-color: #074434; }
+
+.custom-select-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+  background: #111111; border: 1px solid #1c1c1c; border-radius: 8px;
+  max-height: 220px; overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.custom-select-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.55rem 0.85rem; cursor: pointer; font-size: 0.85rem;
+  color: #d1d5db; transition: background 0.12s;
+}
+.custom-select-item:hover:not(.item-deshabilitado) { background: rgba(255,255,255,0.05); }
+.custom-select-item.item-seleccionado { background: rgba(7,68,52,0.3); }
+
+.item-asignado .item-nombre   { color: #4ade80; font-weight: 600; }
+.item-deshabilitado            { cursor: default; }
+.item-deshabilitado .item-nombre { text-decoration: line-through; opacity: 0.45; }
+
+.item-badge { font-size: 0.7rem; border-radius: 4px; padding: 0.15rem 0.45rem; white-space: nowrap; margin-left: 0.5rem; }
+.badge-verde { background: rgba(74,222,128,0.12); color: #4ade80; }
+.badge-gris  { background: rgba(107,114,128,0.12); color: #6b7280; opacity: 0.7; }
 
 .field-hint {
   font-size: 0.72rem;

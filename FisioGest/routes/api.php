@@ -667,6 +667,16 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
+// ── Eventos de agenda por fisioterapeuta y fecha (accesible sin auth) ────────
+// Usado por ambos portales para bloquear slots al agendar citas
+Route::get('/eventos-fisio/{fisioId}/{fecha}', function ($fisioId, $fecha) {
+    $eventos = DB::table('eventos_agenda')
+        ->where('fisioterapeuta_id', $fisioId)
+        ->where('fecha', $fecha)
+        ->get(['evento_id', 'titulo', 'hora_inicio', 'hora_fin', 'tipo']);
+    return response()->json($eventos);
+});
+
 // ── Helper global: recalcula y persiste el estado real de un item ────────────
 $sincEstado = function (int $inventarioId) {
     $item = DB::table('inventario')->where('id_inventario', $inventarioId)->first();
