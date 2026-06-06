@@ -14,14 +14,11 @@
         <span class="stat-value">{{ stats.fisioterapeutas }}</span>
       </div>
       <div class="stat-card">
-        <span class="stat-label">Referidos</span>
-        <span class="stat-value">{{ stats.referidos }}</span>
+        <span class="stat-label">Pacientes</span>
+        <span class="stat-value">{{ stats.pacientes }}</span>
       </div>
       <div class="stat-card active-card">
-        <div class="active-top">
-          <span class="stat-label">Proveedores</span>
-          <span class="active-dot"></span>
-        </div>
+        <span class="stat-label">Proveedores</span>
         <span class="stat-value">{{ stats.proveedores }}</span>
         <div class="active-bar"></div>
       </div>
@@ -84,15 +81,18 @@
               <td class="td-muted">{{ c.email || '—' }}</td>
               <td>
                 <div class="status-cell">
-                    <span :class="['status-dot', dotClass[c.estado]]"></span>
-                     <span :class="['status-text', dotClass[c.estado]]">
-                        {{ c.estado.charAt(0).toUpperCase() + c.estado.slice(1) }}
-                    </span>
+                  <span :class="['status-dot', dotClass[c.estado]]"></span>
+                  <span :class="['status-text', textClass[c.estado]]">
+                    {{ c.estado.charAt(0).toUpperCase() + c.estado.slice(1) }}
+                  </span>
                 </div>
               </td>
               <td class="td-actions">
-                <button class="btn-editar" @click="openModal(c)">Editar</button>
-                <button class="btn-eliminar" @click="eliminar(c.id)">Eliminar</button>
+                <template v-if="c.origen === 'contacto'">
+                  <button class="btn-editar" @click="openModal(c)">Editar</button>
+                  <button class="btn-eliminar" @click="eliminar(c.raw_id)">Eliminar</button>
+                </template>
+                <span v-else class="badge-modulo">{{ c.origen === 'fisioterapeuta' ? 'Módulo Fisio' : 'Módulo Pacientes' }}</span>
               </td>
             </tr>
           </tbody>
@@ -122,8 +122,6 @@
               <div class="form-group">
                 <label>Tipo</label>
                 <select v-model="form.tipo" required>
-                  <option value="fisioterapeuta">Fisioterapeuta</option>
-                  <option value="paciente">Paciente</option>
                   <option value="referido">Referido</option>
                   <option value="proveedor">Proveedor</option>
                 </select>
@@ -180,9 +178,9 @@ const contactos  = ref([])
 const search     = ref('')
 const tipoFiltro = ref('')
 
-const stats = ref({ total: 0, fisioterapeutas: 0, referidos: 0, proveedores: 0 })
+const stats = ref({ total: 0, fisioterapeutas: 0, pacientes: 0, referidos: 0, proveedores: 0 })
 
-const form = ref({ nombre: '', tipo: 'paciente', telefono: '', email: '', estado: 'activo', notas: '' })
+const form = ref({ nombre: '', tipo: 'referido', telefono: '', email: '', estado: 'activo', notas: '' })
 
 const tiposOpciones = [
   { value: '', label: 'Todos' },
@@ -202,7 +200,13 @@ const badgeClass = {
 const dotClass = {
   activo:   'dot-active',
   inactivo: 'dot-inactive',
-  pendiente:'dot-pending',
+  pendiente: 'dot-pending',
+}
+
+const textClass = {
+  activo:   'text-activo',
+  inactivo: 'text-inactivo',
+  pendiente: 'text-pendiente',
 }
 
 function initials(nombre) {
@@ -240,7 +244,7 @@ function openModal(item) {
   editando.value = item
   form.value = item
     ? { nombre: item.nombre, tipo: item.tipo, telefono: item.telefono ?? '', email: item.email ?? '', estado: item.estado, notas: item.notas ?? '' }
-    : { nombre: '', tipo: 'paciente', telefono: '', email: '', estado: 'activo', notas: '' }
+    : { nombre: '', tipo: 'referido', telefono: '', email: '', estado: 'activo', notas: '' }
   showModal.value = true
 }
 
@@ -252,7 +256,7 @@ function closeModal() {
 async function guardar() {
   try {
     if (editando.value) {
-      await fetch(`/api/contactos/${editando.value.id}`, {
+      await fetch(`/api/contactos/${editando.value.raw_id}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body:    JSON.stringify(form.value),
@@ -541,13 +545,24 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 .dot-inactive { background: #4b5563; }
 .dot-pending  { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.4); }
 
-.status-text { font-size: 0.82rem; font-weight: 500; }
-.text-activo   { color: #4ade80; }
+.status-text   { font-size: 0.82rem; font-weight: 500; color: #d1d5db; }
+.text-activo   { color: #d1d5db; }
 .text-inactivo { color: #6b7280; }
 .text-pendiente{ color: #f59e0b; }
 
 /* Action buttons */
 .td-actions { display: flex; gap: 0.4rem; align-items: center; }
+
+.badge-modulo {
+  background: rgba(107,114,128,0.12);
+  color: #6b7280;
+  border: 1px solid rgba(107,114,128,0.2);
+  border-radius: 5px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 .btn-editar {
   background: #1c1c1c;

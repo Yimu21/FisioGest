@@ -5,31 +5,132 @@ namespace App\Http\Controllers\Api;
 use Illuminate\Http\Request;
 use App\Models\Contacto;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\ContactoRequest;
+use Illuminate\Support\Facades\DB;
 
 class ContactoController extends Controller
 {
-      public function index(Request $request)
+    public function index(Request $request)
     {
-        return Contacto::query()
-            ->when($request->search, fn($q, $s) =>
-                $q->where('nombre', 'like', "%$s%")
-                  ->orWhere('email', 'like', "%$s%"))
-            ->when($request->tipo, fn($q, $t) =>
-                $q->where('tipo', $t))
-            ->latest()
-            ->paginate(15);
+        $search  = $request->search;
+        $tipo    = $request->tipo;
+        $perPage = 15;
+        $page    = max(1, (int) ($request->page ?? 1));
+
+        // ── Fisioterapeutas (desde su propia tabla) ──
+        $fisios = (!$tipo || $tipo === 'fisioterapeuta')
+            ? DB::table('fisioterapeutas as f')
+                ->join('usuarios as u', 'u.usuario_id', '=', 'f.usuario_id')
+                ->select(
+                    DB::raw("CONCAT('fis_', f.fisioterapeuta_id) as id"),
+                    DB::raw("CONCAT(f.nombre, ' ', f.apellido) as nombre"),
+                    DB::raw("'fisioterapeuta' as tipo"),
+                    'f.telefono',
+                    DB::raw('u.correo as email'),
+                    DB::raw("IF(f.activo = 1, 'activo', 'inactivo') as estado"),
+                    DB::raw("'fisioterapeuta' as origen"),
+                    DB::raw('NULL as raw_id')
+                )
+                ->when($search, fn($q) =>
+                    $q->where(DB::raw("CONCAT(f.nombre, ' ', f.apellido)"), 'like', "%$search%")
+                      ->orWhere('u.correo', 'like', "%$search%")
+                )
+                ->get()
+            : collect();
+
+        // ── Pacientes (desde su propia tabla) ──
+        $pacientes = (!$tipo || $tipo === 'paciente')
+            ? DB::table('pacientes as p')
+                ->select(
+                    DB::raw("CONCAT('pac_', p.paciente_id) as id"),
+                    DB::raw("CONCAT(p.nombre, ' ', p.apellido) as nombre"),
+                    DB::raw("'paciente' as tipo"),
+                    'p.telefono',
+                    DB::raw("NULL as email"),
+                    DB::raw("'activo' as estado"),
+                    DB::raw("'paciente' as origen"),
+                    DB::raw('NULL as raw_id')
+                )
+                ->when($search, fn($q) =>
+                    $q->where(DB::raw("CONCAT(p.nombre, ' ', p.apellido)"), 'like', "%$search%")
+                )
+                ->get()
+            : collect();
+
+        // ── Referidos y Proveedores (tabla contactos) ──
+        $contactosQuery = DB::table('contactos')
+            ->select(
+                DB::raw("CONCAT('con_', id) as id"),
+                'nombre',
+                'tipo',
+                'telefono',
+                'email',
+                'estado',
+                DB::raw("'contacto' as origen"),
+                DB::raw('id as raw_id')
+            )
+            ->whereIn('tipo', ['referido', 'proveedor'])
+            ->when($search, fn($q) =>
+                $q->where('nombre', 'like', "%$search%")
+                  ->orWhere('email', 'like', "%$search%")
+            );
+
+        if (in_array($tipo, ['referido', 'proveedor'])) {
+            $contactosQuery->where('tipo', $tipo);
+        }
+
+        $contactos = (!$tipo || in_array($tipo, ['referido', 'proveedor']))
+            ? $contactosQuery->get()
+            : collect();
+
+        // ── Unificar, paginar manualmente ──
+        $all   = $fisios->concat($pacientes)->concat($contactos);
+        $total = $all->count();
+        $items = $all->forPage($page, $perPage)->values();
+
+        return response()->json([
+            'data'         => $items,
+            'current_page' => $page,
+            'per_page'     => $perPage,
+            'total'        => $total,
+            'last_page'    => (int) ceil($total / max(1, $perPage)),
+        ]);
     }
 
-    public function store(ContactoRequest $request)
+    public function store(Request $request)
     {
-        $contacto = Contacto::create($request->validated());
+        $request->validate([
+            'nombre'   => 'required|string|max:150',
+            'tipo'     => 'required|in:referido,proveedor',
+            'telefono' => 'nullable|string|max:20',
+            'email'    => 'nullable|email|max:150',
+            'estado'   => 'nullable|in:activo,inactivo,pendiente',
+            'notas'    => 'nullable|string',
+        ]);
+
+        $contacto = Contacto::create([
+            'nombre'   => $request->nombre,
+            'tipo'     => $request->tipo,
+            'telefono' => $request->telefono,
+            'email'    => $request->email,
+            'estado'   => $request->estado ?? 'activo',
+            'notas'    => $request->notas,
+        ]);
+
         return response()->json($contacto, 201);
     }
 
-    public function update(ContactoRequest $request, Contacto $contacto)
+    public function update(Request $request, Contacto $contacto)
     {
-        $contacto->update($request->validated());
+        $request->validate([
+            'nombre'   => 'required|string|max:150',
+            'tipo'     => 'required|in:referido,proveedor',
+            'telefono' => 'nullable|string|max:20',
+            'email'    => 'nullable|email|max:150',
+            'estado'   => 'nullable|in:activo,inactivo,pendiente',
+            'notas'    => 'nullable|string',
+        ]);
+
+        $contacto->update($request->only(['nombre', 'tipo', 'telefono', 'email', 'estado', 'notas']));
         return response()->json($contacto);
     }
 
@@ -41,11 +142,14 @@ class ContactoController extends Controller
 
     public function stats()
     {
-    return response()->json([
-        'total'           => Contacto::count(),
-        'fisioterapeutas' => Contacto::where('tipo', 'fisioterapeuta')->count(),
-        'referidos'       => Contacto::where('tipo', 'referido')->count(),
-        'proveedores'     => Contacto::where('tipo', 'proveedor')->count(),
+        return response()->json([
+            'total'           => DB::table('fisioterapeutas')->count()
+                               + DB::table('pacientes')->count()
+                               + DB::table('contactos')->count(),
+            'fisioterapeutas' => DB::table('fisioterapeutas')->count(),
+            'pacientes'       => DB::table('pacientes')->count(),
+            'referidos'       => DB::table('contactos')->where('tipo', 'referido')->count(),
+            'proveedores'     => DB::table('contactos')->where('tipo', 'proveedor')->count(),
         ]);
     }
 }
