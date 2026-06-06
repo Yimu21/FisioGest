@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 | API Routes - FisioGest
 |--------------------------------------------------------------------------
 */
+use App\Http\Controllers\Api\ContactoController;
 
 // =========================================================================
 // 0. AUTENTICACIÓN
@@ -198,3 +199,10 @@ Route::put('/fisioterapeutas/{id}', function (Request $request, $id) {
 
     return response()->json(['success' => true, 'message' => 'Fisioterapeuta actualizado.']);
 });
+
+
+// =========================================================================
+// 5. MÓDULO DE CONTACTOS
+// =========================================================================
+Route::get('contactos/stats', [ContactoController::class, 'stats']);
+Route::apiResource('contactos', ContactoController::class);

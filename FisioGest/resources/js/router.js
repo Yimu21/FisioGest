@@ -7,6 +7,7 @@ import Citas            from '../components/Citas.vue'
 import Pacientes        from '../components/Pacientes.vue'
 import Inventario       from '../components/Inventario.vue'
 import Fisioterapeutas  from '../components/Fisioterapeutas.vue'
+import Contactos        from '../components/Contactos.vue'
 
 import FisioDashboard   from '../components/FisioDashboard.vue'
 import FisioPacientes   from '../components/FisioPacientes.vue'
@@ -23,6 +24,7 @@ const routes = [
   { path: '/pacientes',       component: Pacientes,       meta: { requiresAuth: true, role: 'admin' } },
   { path: '/inventario',      component: Inventario,      meta: { requiresAuth: true, role: 'admin' } },
   { path: '/fisioterapeutas', component: Fisioterapeutas, meta: { requiresAuth: true, role: 'admin' } },
+  { path: '/contactos',       component: Contactos,       meta: { requiresAuth: true, role: 'admin' } },
 
   // ── Fisioterapeuta ────────────────────────────────────────────────────────
   { path: '/fisio/dashboard',    component: FisioDashboard,    meta: { requiresAuth: true, role: 'fisioterapeuta' } },

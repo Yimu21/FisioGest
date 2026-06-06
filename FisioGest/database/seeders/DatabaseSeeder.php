@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             UsuarioSeeder::class,       // 1° — usuarios base (admin + fisioterapeutas)
             FisioterapeutaSeeder::class, // 2° — fisioterapeutas (dependen de usuarios)
             InventarioSeeder::class,     // 3° — inventario
+            ContactoSeeder::class,     // 4° — contactos 
         ]);
     }
 }
