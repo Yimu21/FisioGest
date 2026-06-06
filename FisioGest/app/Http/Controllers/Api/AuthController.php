@@ -49,6 +49,20 @@ class AuthController extends Controller
             ]);
         }
 
+        // Bloquear acceso si el fisioterapeuta está inactivo
+        if ($usuario->rol === 'fisioterapeuta') {
+            $fisio = \Illuminate\Support\Facades\DB::table('fisioterapeutas')
+                ->where('usuario_id', $usuario->usuario_id)
+                ->first();
+            if ($fisio && ! $fisio->activo) {
+                throw ValidationException::withMessages([
+                    'correo' => ['Tu cuenta ha sido desactivada. Contacta al administrador.'],
+                ]);
+            }
+            // Adjuntar activo al objeto usuario para el frontend
+            $usuario->activo = $fisio?->activo ?? true;
+        }
+
         $usuario->tokens()->delete();
 
         $token = $usuario->createToken('auth_token')->plainTextToken;
@@ -68,6 +82,13 @@ class AuthController extends Controller
 
     public function me(Request $request)
     {
-        return response()->json($request->user());
+        $usuario = $request->user();
+        if ($usuario->rol === 'fisioterapeuta') {
+            $fisio = \Illuminate\Support\Facades\DB::table('fisioterapeutas')
+                ->where('usuario_id', $usuario->usuario_id)
+                ->first();
+            $usuario->activo = $fisio?->activo ?? true;
+        }
+        return response()->json($usuario);
     }
 }

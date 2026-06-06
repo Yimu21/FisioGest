@@ -9,53 +9,31 @@ class FisioterapeutaSeeder extends Seeder
 {
     public function run(): void
     {
-        // Los usuario_id 2-6 son los fisioterapeutas creados en UsuarioSeeder
-        DB::table('fisioterapeutas')->insert([
-            [
-                'usuario_id'   => 2,
-                'nombre'       => 'Manrivel',
-                'apellido'     => 'Gorado',
-                'especialidad' => 'Traumatología',
-                'activo'       => true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'usuario_id'   => 3,
-                'nombre'       => 'Barvis',
-                'apellido'     => 'Raten',
-                'especialidad' => 'Deportiva',
-                'activo'       => true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'usuario_id'   => 4,
-                'nombre'       => 'Bardena',
-                'apellido'     => 'Drides',
-                'especialidad' => 'Deportiva',
-                'activo'       => true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'usuario_id'   => 5,
-                'nombre'       => 'Marina',
-                'apellido'     => 'Gomez',
-                'especialidad' => 'Traumatología',
-                'activo'       => true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-            [
-                'usuario_id'   => 6,
-                'nombre'       => 'Retmen',
-                'apellido'     => 'Nones',
-                'especialidad' => 'Deportiva',
-                'activo'       => true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ],
-        ]);
+        $fisios = [
+            ['correo' => 'manrivel@fisiogest.com', 'nombre' => 'Manrivel', 'apellido' => 'Gorado',  'especialidad' => 'Traumatología'],
+            ['correo' => 'barvis@fisiogest.com',   'nombre' => 'Barvis',   'apellido' => 'Raten',   'especialidad' => 'Deportiva'],
+            ['correo' => 'bardena@fisiogest.com',  'nombre' => 'Bardena',  'apellido' => 'Drides',  'especialidad' => 'Deportiva'],
+            ['correo' => 'marina@fisiogest.com',   'nombre' => 'Marina',   'apellido' => 'Gomez',   'especialidad' => 'Traumatología'],
+            ['correo' => 'retmen@fisiogest.com',   'nombre' => 'Retmen',   'apellido' => 'Nones',   'especialidad' => 'Deportiva'],
+        ];
+
+        foreach ($fisios as $f) {
+            $usuario = DB::table('usuarios')->where('correo', $f['correo'])->first();
+            if (!$usuario) continue;
+
+            // Solo insertar si este usuario aún no tiene registro en fisioterapeutas
+            $existe = DB::table('fisioterapeutas')->where('usuario_id', $usuario->usuario_id)->exists();
+            if (!$existe) {
+                DB::table('fisioterapeutas')->insert([
+                    'usuario_id'   => $usuario->usuario_id,
+                    'nombre'       => $f['nombre'],
+                    'apellido'     => $f['apellido'],
+                    'especialidad' => $f['especialidad'],
+                    'activo'       => true,
+                    'created_at'   => now(),
+                    'updated_at'   => now(),
+                ]);
+            }
+        }
     }
 }
