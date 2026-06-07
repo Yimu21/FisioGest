@@ -63,6 +63,19 @@ class AuthController extends Controller
             $usuario->activo = $fisio?->activo ?? true;
         }
 
+        // Bloquear acceso si el paciente no tiene portal activo
+        if ($usuario->rol === 'paciente') {
+            $paciente = \Illuminate\Support\Facades\DB::table('pacientes')
+                ->where('usuario_id', $usuario->usuario_id)
+                ->first();
+            if (! $paciente || ! $paciente->portal_activo) {
+                throw ValidationException::withMessages([
+                    'correo' => ['Tu acceso al portal ha sido desactivado. Contacta al administrador.'],
+                ]);
+            }
+            $usuario->portal_activo = $paciente->portal_activo;
+        }
+
         $usuario->tokens()->delete();
 
         $token = $usuario->createToken('auth_token')->plainTextToken;
@@ -88,6 +101,12 @@ class AuthController extends Controller
                 ->where('usuario_id', $usuario->usuario_id)
                 ->first();
             $usuario->activo = $fisio?->activo ?? true;
+        }
+        if ($usuario->rol === 'paciente') {
+            $paciente = \Illuminate\Support\Facades\DB::table('pacientes')
+                ->where('usuario_id', $usuario->usuario_id)
+                ->first();
+            $usuario->portal_activo = $paciente?->portal_activo ?? false;
         }
         return response()->json($usuario);
     }

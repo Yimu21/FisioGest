@@ -154,13 +154,27 @@
                 </div>
                 <div class="form-group">
                   <label>{{ editando ? 'Nueva contraseña' : 'Contraseña inicial' }}</label>
-                  <input
-                    v-model="form.contrasena"
-                    type="password"
-                    :placeholder="editando ? 'Dejar vacío para no cambiar' : 'Mínimo 8 caracteres'"
-                    :minlength="editando ? undefined : 8"
-                    :required="!editando"
-                  />
+                  <div class="pass-wrap">
+                    <input
+                      v-model="form.contrasena"
+                      :type="showPassFisio ? 'text' : 'password'"
+                      :placeholder="editando ? 'Dejar vacío para no cambiar' : 'Mínimo 8 caracteres'"
+                      :minlength="editando ? undefined : 8"
+                      :required="!editando"
+                    />
+                    <button type="button" class="pass-eye" @click="showPassFisio = !showPassFisio" tabindex="-1">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <template v-if="showPassFisio">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </template>
+                        <template v-else>
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </template>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -240,7 +254,21 @@
             </div>
             <div class="form-group">
               <label>Contraseña inicial</label>
-              <input v-model="credForm.contrasena" type="password" placeholder="Mínimo 8 caracteres" minlength="8" required />
+              <div class="pass-wrap">
+                <input v-model="credForm.contrasena" :type="showPassCred ? 'text' : 'password'" placeholder="Mínimo 8 caracteres" minlength="8" required />
+                <button type="button" class="pass-eye" @click="showPassCred = !showPassCred" tabindex="-1">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <template v-if="showPassCred">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </template>
+                    <template v-else>
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </template>
+                  </svg>
+                </button>
+              </div>
             </div>
             <p v-if="credError" class="cred-error">{{ credError }}</p>
             <div class="modal-actions">
@@ -280,8 +308,20 @@ const credFisio       = ref(null)
 const credForm        = ref({ correo: '', contrasena: '' })
 const credError       = ref('')
 const credGuardando   = ref(false)
+const showPassFisio   = ref(false)
+const showPassCred    = ref(false)
 
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+function authHeaders(extra = {}) {
+  const token = localStorage.getItem('token')
+  return {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...extra,
+  }
+}
 
 function defaultHorario() {
   return {
@@ -325,7 +365,7 @@ function showToast(msg, type = 'success') {
 
 onMounted(async () => {
   try {
-    const res  = await fetch('/api/fisioterapeutas')
+    const res  = await fetch('/api/fisioterapeutas', { headers: authHeaders() })
     const data = await res.json()
     fisioterapeutas.value = data.map(f => ({
       id:            f.fisioterapeuta_id,
@@ -370,7 +410,7 @@ async function guardar() {
       if (form.value.contrasena) payload.contrasena = form.value.contrasena
       const res  = await fetch(`/api/fisioterapeutas/${editando.value.id}`, {
         method:  'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: authHeaders(),
         body:    JSON.stringify(payload),
       })
       const data = await res.json()
@@ -387,7 +427,7 @@ async function guardar() {
     } else {
       const res  = await fetch('/api/fisioterapeutas', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: authHeaders(),
         body:    JSON.stringify({ ...payload, correo: form.value.correo, contrasena: form.value.contrasena }),
       })
       const data = await res.json()
@@ -405,7 +445,7 @@ async function toggleActivo(f) {
   try {
     await fetch(`/api/fisioterapeutas/${f.id}/activo`, {
       method:  'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: authHeaders(),
       body:    JSON.stringify({ activo: f.activo }),
     })
     showToast(`Estado actualizado: ${f.activo ? 'Activo' : 'Inactivo'}`)
@@ -421,7 +461,7 @@ async function eliminar(f) {
   try {
     await fetch(`/api/fisioterapeutas/${f.id}`, {
       method:  'DELETE',
-      headers: { 'Accept': 'application/json' },
+      headers: authHeaders(),
     })
     fisioterapeutas.value = fisioterapeutas.value.filter(x => x.id !== f.id)
     showToast('Fisioterapeuta eliminado')
@@ -455,7 +495,7 @@ async function guardarCredenciales() {
   try {
     const res  = await fetch(`/api/fisioterapeutas/${credFisio.value.id}/credenciales`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: authHeaders(),
       body:    JSON.stringify(credForm.value),
     })
     const data = await res.json()
@@ -482,7 +522,7 @@ async function guardarHorario() {
   try {
     await fetch(`/api/fisioterapeutas/${horarioFisio.value.id}/horario`, {
       method:  'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: authHeaders(),
       body:    JSON.stringify({ horario: horarioForm.value }),
     })
     const idx = fisioterapeutas.value.findIndex(f => f.id === horarioFisio.value.id)
@@ -1092,4 +1132,14 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   from { transform: translateY(12px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+.pass-wrap { position: relative; display: flex; }
+.pass-wrap input { flex: 1; padding-right: 2.5rem !important; }
+.pass-eye {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: #6b7280; padding: 0.2rem; display: flex; align-items: center;
+  transition: color 0.15s;
+}
+.pass-eye:hover { color: #d1d5db; }
 </style>

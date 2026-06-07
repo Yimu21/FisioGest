@@ -10,12 +10,18 @@ import Fisioterapeutas  from '../components/Fisioterapeutas.vue'
 import Contactos        from '../components/Contactos.vue'
 import Configuracion    from '../components/Configuracion.vue'
 
-import FisioDashboard   from '../components/FisioDashboard.vue'
-import FisioPacientes   from '../components/FisioPacientes.vue'
+import FisioDashboard    from '../components/FisioDashboard.vue'
+import FisioPacientes    from '../components/FisioPacientes.vue'
 import FisioAsignaciones from '../components/FisioAsignaciones.vue'
-import FisioCitas       from '../components/FisioCitas.vue'
-import FisioAgenda          from '../components/FisioAgenda.vue'
-import FisioConfiguracion   from '../components/FisioConfiguracion.vue'
+import FisioCitas        from '../components/FisioCitas.vue'
+import FisioAgenda       from '../components/FisioAgenda.vue'
+import FisioConfiguracion from '../components/FisioConfiguracion.vue'
+
+import PacienteDashboard    from '../components/PacienteDashboard.vue'
+import PacienteInfoPersonal from '../components/PacienteInfoPersonal.vue'
+import PacienteEquipo       from '../components/PacienteEquipo.vue'
+import PacienteAgendarCita  from '../components/PacienteAgendarCita.vue'
+import PacienteConfiguracion from '../components/PacienteConfiguracion.vue'
 
 const routes = [
   // ── Pública ──────────────────────────────────────────────────────────────
@@ -35,8 +41,15 @@ const routes = [
   { path: '/fisio/pacientes',    component: FisioPacientes,    meta: { requiresAuth: true, role: 'fisioterapeuta' } },
   { path: '/fisio/asignaciones', component: FisioAsignaciones, meta: { requiresAuth: true, role: 'fisioterapeuta' } },
   { path: '/fisio/citas',        component: FisioCitas,        meta: { requiresAuth: true, role: 'fisioterapeuta' } },
-  { path: '/fisio/agenda',         component: FisioAgenda,         meta: { requiresAuth: true, role: 'fisioterapeuta' } },
-  { path: '/fisio/configuracion',  component: FisioConfiguracion,  meta: { requiresAuth: true, role: 'fisioterapeuta' } },
+  { path: '/fisio/agenda',       component: FisioAgenda,       meta: { requiresAuth: true, role: 'fisioterapeuta' } },
+  { path: '/fisio/configuracion', component: FisioConfiguracion, meta: { requiresAuth: true, role: 'fisioterapeuta' } },
+
+  // ── Paciente ──────────────────────────────────────────────────────────────
+  { path: '/paciente/dashboard',    component: PacienteDashboard,    meta: { requiresAuth: true, role: 'paciente' } },
+  { path: '/paciente/info-personal', component: PacienteInfoPersonal, meta: { requiresAuth: true, role: 'paciente' } },
+  { path: '/paciente/equipo',       component: PacienteEquipo,       meta: { requiresAuth: true, role: 'paciente' } },
+  { path: '/paciente/agendar',      component: PacienteAgendarCita,  meta: { requiresAuth: true, role: 'paciente' } },
+  { path: '/paciente/configuracion', component: PacienteConfiguracion, meta: { requiresAuth: true, role: 'paciente' } },
 
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
@@ -63,15 +76,17 @@ router.beforeEach((to) => {
 
   // Si la ruta requiere un rol específico y no coincide → redirigir a su home
   if (to.meta.role && to.meta.role !== role) {
-    if (role === 'admin')            return '/dashboard'
-    if (role === 'fisioterapeuta')   return '/fisio/dashboard'
+    if (role === 'admin')           return '/dashboard'
+    if (role === 'fisioterapeuta')  return '/fisio/dashboard'
+    if (role === 'paciente')        return '/paciente/dashboard'
     return '/'
   }
 
   // Si ya está autenticado y va al login → redirigir a su home
   if (to.path === '/' && auth) {
-    if (role === 'admin')            return '/dashboard'
-    if (role === 'fisioterapeuta')   return '/fisio/dashboard'
+    if (role === 'admin')           return '/dashboard'
+    if (role === 'fisioterapeuta')  return '/fisio/dashboard'
+    if (role === 'paciente')        return '/paciente/dashboard'
   }
 })
 

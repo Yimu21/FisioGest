@@ -39,15 +39,16 @@
               <th>Fecha Nacimiento</th>
               <th>Teléfono</th>
               <th>Especialista Asignado</th>
+              <th>Acceso al Portal</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="6" class="td-empty">Cargando pacientes...</td>
+              <td colspan="7" class="td-empty">Cargando pacientes...</td>
             </tr>
             <tr v-else-if="pacientes.length === 0">
-              <td colspan="6" class="td-empty">No hay pacientes registrados. Haz clic en "Nuevo Paciente" para empezar.</td>
+              <td colspan="7" class="td-empty">No hay pacientes registrados. Haz clic en "Nuevo Paciente" para empezar.</td>
             </tr>
             <tr v-for="p in pacientes" :key="p.paciente_id" v-else>
               <td class="td-nombre">{{ p.nombre }} {{ p.apellido }}</td>
@@ -57,6 +58,42 @@
               <td class="td-fecha">{{ formatFecha(p.fecha_nacimiento) }}</td>
               <td>{{ p.telefono || '—' }}</td>
               <td class="td-fisio">{{ nombreFisio(p.fisioterapeuta_id) }}</td>
+
+              <!-- Toggle acceso al portal — 3 estados -->
+              <td class="td-acceso">
+                <!-- Sin cuenta vinculada → gris, abre modal -->
+                <div v-if="!p.usuario_id" class="acceso-inactivo">
+                  <button class="toggle-btn off" @click="openEditModal(p, true)" title="Habilitar acceso al portal">
+                    <span class="toggle-knob"></span>
+                  </button>
+                  <span class="acceso-label">Sin cuenta</span>
+                </div>
+                <!-- Tiene cuenta y portal activo → verde -->
+                <div v-else-if="p.portal_activo" class="acceso-activo">
+                  <button
+                    class="toggle-btn on"
+                    :disabled="toggling === p.paciente_id"
+                    @click="confirmarRevocacion(p)"
+                    title="Clic para revocar acceso"
+                  >
+                    <span class="toggle-knob"></span>
+                  </button>
+                  <span class="acceso-email">{{ p.correo }}</span>
+                </div>
+                <!-- Tiene cuenta pero portal inactivo → amarillo, re-habilita sin password -->
+                <div v-else class="acceso-suspendido">
+                  <button
+                    class="toggle-btn suspended"
+                    :disabled="toggling === p.paciente_id"
+                    @click="habilitarAcceso(p)"
+                    title="Clic para re-habilitar acceso"
+                  >
+                    <span class="toggle-knob"></span>
+                  </button>
+                  <span class="acceso-email suspended">{{ p.correo }}</span>
+                </div>
+              </td>
+
               <td class="td-acciones">
                 <button class="btn-accion" @click="openEditModal(p)" title="Editar paciente">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -80,7 +117,7 @@
       </div>
     </div>
 
-    <!-- Modal -->
+    <!-- ── Modal: Crear / Editar paciente ── -->
     <Teleport to="body">
       <div class="modal-overlay" v-if="showModal" @click.self="closeModal">
         <div class="modal">
@@ -94,6 +131,8 @@
           </div>
 
           <form class="modal-form" @submit.prevent="savePaciente">
+
+            <!-- Datos personales -->
             <div class="form-row">
               <div class="form-group">
                 <label>Nombre *</label>
@@ -135,6 +174,92 @@
               </select>
             </div>
 
+            <!-- Sección credenciales de acceso al portal -->
+            <div class="creds-section">
+              <div class="creds-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span>Acceso al Portal del Paciente</span>
+                <span v-if="editingPaciente?.usuario_id && editingPaciente?.portal_activo" class="creds-badge active">Activo</span>
+                <span v-else-if="editingPaciente?.usuario_id && !editingPaciente?.portal_activo" class="creds-badge suspended">Suspendido</span>
+                <span v-else class="creds-badge inactive">Sin cuenta</span>
+              </div>
+
+              <!-- Tiene cuenta inactiva: solo mostrar email y botón re-habilitar -->
+              <template v-if="editingPaciente?.usuario_id && !editingPaciente?.portal_activo">
+                <div class="creds-hint">La cuenta existe pero el acceso está suspendido. Puedes re-habilitarlo sin cambiar la contraseña.</div>
+                <div class="form-group">
+                  <label>Correo registrado</label>
+                  <input :value="form.correo" type="email" disabled style="opacity:0.5" />
+                </div>
+                <div class="revoke-row">
+                  <button type="button" class="btn-habilitar" @click="habilitarDesdeModal">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Re-habilitar acceso al portal
+                  </button>
+                </div>
+              </template>
+
+              <!-- Tiene cuenta activa: mostrar correo y nueva contraseña opcional -->
+              <template v-else-if="editingPaciente?.usuario_id && editingPaciente?.portal_activo">
+                <div class="creds-hint">Deja los campos vacíos para conservar los datos actuales.</div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Correo electrónico</label>
+                    <input v-model="form.correo" type="email" placeholder="correo@ejemplo.com" />
+                  </div>
+                  <div class="form-group">
+                    <label>Nueva contraseña</label>
+                    <div class="pass-wrap">
+                      <input v-model="form.contrasena" :type="showPassPac ? 'text' : 'password'" placeholder="Dejar vacío para no cambiar" />
+                      <button type="button" class="pass-eye" @click="showPassPac = !showPassPac" tabindex="-1">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <template v-if="showPassPac"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></template>
+                          <template v-else><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></template>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="revoke-row">
+                  <button type="button" class="btn-revocar" @click="confirmarRevocacion(editingPaciente)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
+                    Revocar acceso al portal
+                  </button>
+                </div>
+              </template>
+
+              <!-- Sin cuenta: pedir correo + contraseña para crear -->
+              <template v-else>
+                <div class="creds-hint">Completa estos campos para habilitar el acceso al portal.</div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Correo electrónico *</label>
+                    <input v-model="form.correo" type="email" placeholder="correo@ejemplo.com" :required="!editingPaciente" />
+                  </div>
+                  <div class="form-group">
+                    <label>Contraseña *</label>
+                    <div class="pass-wrap">
+                      <input v-model="form.contrasena" :type="showPassPac ? 'text' : 'password'" placeholder="Mínimo 8 caracteres" :required="!editingPaciente" />
+                      <button type="button" class="pass-eye" @click="showPassPac = !showPassPac" tabindex="-1">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <template v-if="showPassPac"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></template>
+                          <template v-else><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></template>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
             <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
             <div class="modal-actions">
@@ -148,7 +273,7 @@
       </div>
     </Teleport>
 
-    <!-- Modal: Confirmar eliminación -->
+    <!-- ── Modal: Confirmar eliminación ── -->
     <Teleport to="body">
       <div class="modal-overlay" v-if="showDeleteModal" @click.self="closeDeleteModal">
         <div class="modal modal-sm">
@@ -160,7 +285,6 @@
               </svg>
             </button>
           </div>
-
           <div class="delete-warning">
             <div class="warning-icon">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2">
@@ -174,12 +298,46 @@
               Esta acción no se puede deshacer.
             </p>
           </div>
-
           <div class="modal-actions" style="margin-top:1.25rem;">
             <button class="btn-eliminar" @click="confirmDelete" :disabled="deleting">
               {{ deleting ? 'Eliminando...' : 'Sí, eliminar' }}
             </button>
             <button class="btn-cancelar" @click="closeDeleteModal">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ── Modal: Confirmar revocación de acceso ── -->
+    <Teleport to="body">
+      <div class="modal-overlay" v-if="showRevokeModal" @click.self="closeRevokeModal">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h3>Revocar Acceso al Portal</h3>
+            <button class="modal-close" @click="closeRevokeModal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="delete-warning">
+            <div class="warning-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <p class="warning-text">
+              Se eliminará el acceso al portal de
+              <strong>{{ pacienteAEliminar?.nombre }} {{ pacienteAEliminar?.apellido }}</strong>.
+              La cuenta de usuario quedará desactivada.
+            </p>
+          </div>
+          <div class="modal-actions" style="margin-top:1.25rem;">
+            <button class="btn-eliminar" @click="confirmRevocacion" :disabled="toggling === pacienteAEliminar?.paciente_id">
+              {{ toggling === pacienteAEliminar?.paciente_id ? 'Revocando...' : 'Sí, revocar acceso' }}
+            </button>
+            <button class="btn-cancelar" @click="closeRevokeModal">Cancelar</button>
           </div>
         </div>
       </div>
@@ -199,8 +357,11 @@ const showModal        = ref(false)
 const saving           = ref(false)
 const errorMsg         = ref('')
 const editingPaciente  = ref(null)
+const toggling         = ref(null)
 
 const showDeleteModal   = ref(false)
+const showRevokeModal   = ref(false)
+const showPassPac       = ref(false)
 const pacienteAEliminar = ref(null)
 const deleting          = ref(false)
 
@@ -208,17 +369,22 @@ const fisioterapeutas = ref([])
 
 const form = ref({
   nombre: '', apellido: '', fecha_nacimiento: '',
-  genero: 'masculino', telefono: '', fisioterapeuta_id: ''
+  genero: 'masculino', telefono: '', fisioterapeuta_id: '',
+  correo: '', contrasena: '',
 })
 
 function openModal() {
   editingPaciente.value = null
-  form.value = { nombre: '', apellido: '', fecha_nacimiento: '', genero: 'masculino', telefono: '', fisioterapeuta_id: '' }
+  form.value = {
+    nombre: '', apellido: '', fecha_nacimiento: '',
+    genero: 'masculino', telefono: '', fisioterapeuta_id: '',
+    correo: '', contrasena: '',
+  }
   errorMsg.value  = ''
   showModal.value = true
 }
 
-function openEditModal(p) {
+function openEditModal(p, focusCredenciales = false) {
   editingPaciente.value = p
   form.value = {
     nombre:            p.nombre,
@@ -227,9 +393,17 @@ function openEditModal(p) {
     genero:            p.genero ?? 'masculino',
     telefono:          p.telefono ?? '',
     fisioterapeuta_id: p.fisioterapeuta_id ?? '',
+    correo:            p.correo ?? '',
+    contrasena:        '',
   }
   errorMsg.value  = ''
   showModal.value = true
+  if (focusCredenciales) {
+    // Scroll a la sección de credenciales tras el render
+    setTimeout(() => {
+      document.querySelector('.creds-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 100)
+  }
 }
 
 function closeModal() {
@@ -247,6 +421,58 @@ function closeDeleteModal() {
   pacienteAEliminar.value = null
 }
 
+function confirmarRevocacion(p) {
+  showModal.value         = false   // cierra el modal de edición si estaba abierto
+  pacienteAEliminar.value = p
+  showRevokeModal.value   = true
+}
+
+function closeRevokeModal() {
+  showRevokeModal.value   = false
+  pacienteAEliminar.value = null
+}
+
+async function confirmRevocacion() {
+  const p = pacienteAEliminar.value
+  if (!p) return
+  toggling.value = p.paciente_id
+  try {
+    await pacienteService.revocarAcceso(p.paciente_id)
+    await cargarPacientes()
+    closeRevokeModal()
+  } catch (err) {
+    alert(err?.response?.data?.message ?? 'Error al revocar acceso.')
+  } finally {
+    toggling.value = null
+  }
+}
+
+async function habilitarAcceso(p) {
+  toggling.value = p.paciente_id
+  try {
+    await pacienteService.habilitarAcceso(p.paciente_id)
+    await cargarPacientes()
+  } catch (err) {
+    alert(err?.response?.data?.message ?? 'Error al habilitar acceso.')
+  } finally {
+    toggling.value = null
+  }
+}
+
+async function habilitarDesdeModal() {
+  if (!editingPaciente.value) return
+  toggling.value = editingPaciente.value.paciente_id
+  try {
+    await pacienteService.habilitarAcceso(editingPaciente.value.paciente_id)
+    await cargarPacientes()
+    closeModal()
+  } catch (err) {
+    errorMsg.value = err?.response?.data?.message ?? 'Error al habilitar acceso.'
+  } finally {
+    toggling.value = null
+  }
+}
+
 async function confirmDelete() {
   deleting.value = true
   try {
@@ -254,7 +480,6 @@ async function confirmDelete() {
     await cargarPacientes()
     closeDeleteModal()
   } catch {
-    // si falla simplemente cerramos
     closeDeleteModal()
   } finally {
     deleting.value = false
@@ -294,16 +519,32 @@ async function cargarPacientes() {
 async function savePaciente() {
   saving.value   = true
   errorMsg.value = ''
+
   try {
     if (editingPaciente.value) {
+      // Guardar datos del paciente (el endpoint también maneja email/password si hay usuario vinculado)
       await pacienteService.update(editingPaciente.value.paciente_id, form.value)
+
+      // Si no tiene cuenta y se proveyeron credenciales → crear cuenta
+      if (!editingPaciente.value.usuario_id && form.value.correo && form.value.contrasena) {
+        await pacienteService.crearCredenciales(editingPaciente.value.paciente_id, {
+          correo:    form.value.correo,
+          contrasena: form.value.contrasena,
+        })
+      }
+      // Cuenta suspendida: no hacer nada extra (el usuario usa habilitarDesdeModal)
     } else {
+      // Nuevo paciente: el endpoint ya maneja credenciales si se enviaron
       await pacienteService.create(form.value)
+      await cargarPacientes()
+      closeModal()
+      return
     }
+
     await cargarPacientes()
     closeModal()
-  } catch {
-    errorMsg.value = 'Error al guardar el paciente. Verifica los datos.'
+  } catch (err) {
+    errorMsg.value = err?.response?.data?.message ?? 'Error al guardar el paciente. Verifica los datos.'
   } finally {
     saving.value = false
   }
@@ -390,7 +631,6 @@ onMounted(cargarPacientes)
 .table-wrapper { overflow-x: auto; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-
 thead tr { border-bottom: 1px solid #1c1c1c; }
 
 th {
@@ -428,6 +668,60 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 .genero-badge.femenino   { background: rgba(236,72,153,0.15); color: #f9a8d4; }
 .genero-badge.otro       { background: rgba(107,114,128,0.15); color: #9ca3af; }
 
+/* ── Toggle de acceso al portal ── */
+.td-acceso { white-space: nowrap; }
+
+.acceso-activo,
+.acceso-inactivo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toggle-btn {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 99px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.toggle-btn.on        { background: #074434; }
+.toggle-btn.off       { background: #2a2a2a; }
+.toggle-btn.suspended { background: rgba(251,191,36,0.2); }
+.toggle-btn:disabled  { opacity: 0.5; cursor: wait; }
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+}
+.toggle-btn.on        .toggle-knob { left: 18px; background: #4ade80; }
+.toggle-btn.suspended .toggle-knob { left: 10px; background: #fbbf24; }
+.toggle-btn.off       .toggle-knob { left: 2px; }
+
+.acceso-email {
+  font-size: 0.75rem;
+  color: #4ade80;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acceso-email.suspended { color: #fbbf24; }
+
+.acceso-label {
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -445,7 +739,9 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   border-radius: 12px;
   padding: 1.5rem;
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
 
@@ -473,7 +769,6 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 .modal-form { display: flex; flex-direction: column; gap: 1rem; }
 
 .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
-
 .form-group label { color: #9ca3af; font-size: 0.8rem; font-weight: 600; }
 
 .form-group input,
@@ -497,6 +792,78 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+/* Sección credenciales */
+.creds-section {
+  border: 1px solid #1c1c1c;
+  border-radius: 9px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  background: #0d0d0d;
+}
+
+.creds-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.creds-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 99px;
+  margin-left: auto;
+}
+.creds-badge.active    { background: rgba(74,222,128,0.12); color: #4ade80; }
+.creds-badge.inactive  { background: rgba(107,114,128,0.15); color: #6b7280; }
+.creds-badge.suspended { background: rgba(251,191,36,0.12); color: #fbbf24; }
+
+.creds-hint {
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.revoke-row { display: flex; }
+
+.btn-revocar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 7px;
+  color: #f87171;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-revocar:hover { background: rgba(239,68,68,0.08); }
+
+.btn-habilitar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: 1px solid rgba(74,222,128,0.25);
+  border-radius: 7px;
+  color: #4ade80;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-habilitar:hover { background: rgba(74,222,128,0.08); }
 
 .error-msg {
   color: #f87171;
@@ -538,12 +905,7 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 }
 .btn-cancelar:hover { background: #2a2a2a; color: #d1d5db; }
 
-/* Columna de acciones */
-.td-acciones {
-  width: 1%;
-  white-space: nowrap;
-  padding-right: 0.5rem;
-}
+.td-acciones { width: 1%; white-space: nowrap; padding-right: 0.5rem; }
 
 .btn-accion {
   display: inline-flex;
@@ -562,22 +924,12 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   margin-right: 0.4rem;
 }
 .btn-accion:last-child { margin-right: 0; }
-.btn-accion:hover {
-  background: rgba(255,255,255,0.08);
-  color: #e5e7eb;
-  border-color: #3a3a3a;
-}
+.btn-accion:hover { background: rgba(255,255,255,0.08); color: #e5e7eb; border-color: #3a3a3a; }
 .btn-accion.btn-danger { color: #f87171; border-color: rgba(239,68,68,0.2); }
-.btn-accion.btn-danger:hover {
-  background: rgba(239,68,68,0.1);
-  color: #fca5a5;
-  border-color: rgba(239,68,68,0.35);
-}
+.btn-accion.btn-danger:hover { background: rgba(239,68,68,0.1); color: #fca5a5; border-color: rgba(239,68,68,0.35); }
 
-/* Modal compacto */
 .modal-sm { max-width: 380px; }
 
-/* Modal de eliminación */
 .delete-warning {
   display: flex;
   gap: 1rem;
@@ -596,7 +948,6 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
   line-height: 1.5;
   margin: 0;
 }
-
 .warning-text strong { color: #ffffff; }
 
 .btn-eliminar {
@@ -614,4 +965,14 @@ tbody tr:hover td { background: rgba(255,255,255,0.02); }
 }
 .btn-eliminar:hover:not(:disabled) { background: #991b1b; }
 .btn-eliminar:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.pass-wrap { position: relative; display: flex; }
+.pass-wrap input { flex: 1; padding-right: 2.5rem !important; }
+.pass-eye {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: #6b7280; padding: 0.2rem; display: flex; align-items: center;
+  transition: color 0.15s;
+}
+.pass-eye:hover { color: #d1d5db; }
 </style>

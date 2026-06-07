@@ -79,16 +79,25 @@
       <form class="cfg-form" @submit.prevent="cambiarContrasena">
         <div class="form-group" style="max-width:400px">
           <label>Contraseña actual</label>
-          <input v-model="cuenta.actual" type="password" placeholder="••••••••" autocomplete="current-password" required />
+          <div class="pass-wrap">
+            <input v-model="cuenta.actual" :type="showPassActual ? 'text' : 'password'" placeholder="••••••••" autocomplete="current-password" required />
+            <button type="button" class="pass-eye" @click="showPassActual = !showPassActual" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><template v-if="showPassActual"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></template><template v-else><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></template></svg></button>
+          </div>
         </div>
         <div class="form-row" style="max-width:820px">
           <div class="form-group">
             <label>Nueva contraseña</label>
-            <input v-model="cuenta.nueva" type="password" placeholder="••••••••" autocomplete="new-password" required />
+            <div class="pass-wrap">
+              <input v-model="cuenta.nueva" :type="showPassNueva ? 'text' : 'password'" placeholder="••••••••" autocomplete="new-password" required />
+              <button type="button" class="pass-eye" @click="showPassNueva = !showPassNueva" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><template v-if="showPassNueva"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></template><template v-else><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></template></svg></button>
+            </div>
           </div>
           <div class="form-group">
             <label>Confirmar nueva contraseña</label>
-            <input v-model="cuenta.confirmar" type="password" placeholder="••••••••" autocomplete="new-password" required />
+            <div class="pass-wrap">
+              <input v-model="cuenta.confirmar" :type="showPassConfirm ? 'text' : 'password'" placeholder="••••••••" autocomplete="new-password" required />
+              <button type="button" class="pass-eye" @click="showPassConfirm = !showPassConfirm" tabindex="-1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><template v-if="showPassConfirm"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></template><template v-else><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></template></svg></button>
+            </div>
           </div>
         </div>
 
@@ -191,6 +200,9 @@ import { getUser, saveUser } from '@/services/api'
 import axios from 'axios'
 
 const tab         = ref('perfil')
+const showPassActual  = ref(false)
+const showPassNueva   = ref(false)
+const showPassConfirm = ref(false)
 const guardando   = ref(false)
 const exportando  = ref(false)
 const errorPerfil = ref('')
@@ -505,4 +517,14 @@ onMounted(cargar)
 .toast-slide-enter-active { animation: toastIn 0.3s ease; }
 .toast-slide-leave-active { animation: toastIn 0.25s ease reverse; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.pass-wrap { position: relative; display: flex; }
+.pass-wrap input { flex: 1; padding-right: 2.5rem !important; }
+.pass-eye {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: #6b7280; padding: 0.2rem; display: flex; align-items: center;
+  transition: color 0.15s;
+}
+.pass-eye:hover { color: #d1d5db; }
 </style>
