@@ -12,6 +12,19 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// Si el servidor responde 401 (no autenticado o token expirado) → cerrar sesión
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/'
+    }
+    return Promise.reject(error)
+  }
+)
+
 // ── Helpers de sesión ────────────────────────────────────────────────────────
 export function saveUser(user, token) {
   localStorage.setItem('token', token)

@@ -701,8 +701,10 @@ $sincEstado = function (int $inventarioId) {
 };
 
 // =========================================================================
-// 2. MÓDULO DE INVENTARIO (Rutas originales estables)
+// 2–5. MÓDULOS PROTEGIDOS (requieren token de sesión)
 // =========================================================================
+Route::middleware('auth:sanctum')->group(function () use ($sincEstado) {
+
 Route::get('/inventario', [\App\Http\Controllers\Api\InventarioController::class, 'index']);
 Route::post('/inventario', [\App\Http\Controllers\Api\InventarioController::class, 'store']);
 
@@ -1111,3 +1113,5 @@ Route::put('/fisioterapeutas/{id}/horario', function (Request $request, $id) {
 // =========================================================================
 Route::get('contactos/stats', [ContactoController::class, 'stats']);
 Route::apiResource('contactos', ContactoController::class);
+
+}); // fin middleware auth:sanctum (módulos 2–5)

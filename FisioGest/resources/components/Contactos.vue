@@ -168,8 +168,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
+
+// fetch autenticado: adjunta el token y redirige al login si expira
+function apiFetch(url, options = {}) {
+  const token = localStorage.getItem('token')
+  const headers = { 'Accept': 'application/json', ...(options.headers || {}) }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return fetch(url, { ...options, headers }).then(res => {
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/'
+    }
+    return res
+  })
+}
 
 const showModal  = ref(false)
 const editando   = ref(null)
@@ -220,7 +235,7 @@ async function cargar() {
     if (search.value)     params.append('search', search.value)
     if (tipoFiltro.value) params.append('tipo', tipoFiltro.value)
 
-    const res  = await fetch(`/api/contactos?${params}`)
+    const res  = await apiFetch(`/api/contactos?${params}`)
     const data = await res.json()
     contactos.value = data.data ?? data
   } catch (e) {
@@ -232,7 +247,7 @@ async function cargar() {
 
 async function cargarStats() {
   try {
-    const res  = await fetch('/api/contactos/stats')
+    const res  = await apiFetch('/api/contactos/stats')
     const data = await res.json()
     stats.value = data
   } catch (e) {
@@ -256,15 +271,15 @@ function closeModal() {
 async function guardar() {
   try {
     if (editando.value) {
-      await fetch(`/api/contactos/${editando.value.raw_id}`, {
+      await apiFetch(`/api/contactos/${editando.value.raw_id}`, {
         method:  'PUT',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(form.value),
       })
     } else {
-      await fetch('/api/contactos', {
+      await apiFetch('/api/contactos', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(form.value),
       })
     }
@@ -279,10 +294,7 @@ async function guardar() {
 async function eliminar(id) {
   if (!confirm('¿Eliminar este contacto?')) return
   try {
-    await fetch(`/api/contactos/${id}`, {
-      method:  'DELETE',
-      headers: { 'Accept': 'application/json' },
-    })
+    await apiFetch(`/api/contactos/${id}`, { method: 'DELETE' })
     cargar()
     cargarStats()
   } catch (e) {
@@ -291,6 +303,12 @@ async function eliminar(id) {
 }
 
 onMounted(() => {
+  cargar()
+  cargarStats()
+})
+
+// Se dispara al volver a la vista si está dentro de <keep-alive>
+onActivated(() => {
   cargar()
   cargarStats()
 })

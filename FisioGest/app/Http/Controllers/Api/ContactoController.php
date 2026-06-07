@@ -11,10 +11,8 @@ class ContactoController extends Controller
 {
     public function index(Request $request)
     {
-        $search  = $request->search;
-        $tipo    = $request->tipo;
-        $perPage = 15;
-        $page    = max(1, (int) ($request->page ?? 1));
+        $search = $request->search;
+        $tipo   = $request->tipo;
 
         // ── Fisioterapeutas (desde su propia tabla) ──
         $fisios = (!$tipo || $tipo === 'fisioterapeuta')
@@ -22,7 +20,7 @@ class ContactoController extends Controller
                 ->join('usuarios as u', 'u.usuario_id', '=', 'f.usuario_id')
                 ->select(
                     DB::raw("CONCAT('fis_', f.fisioterapeuta_id) as id"),
-                    DB::raw("CONCAT(f.nombre, ' ', f.apellido) as nombre"),
+                    DB::raw("CONCAT_WS(' ', f.nombre, f.apellido) as nombre"),
                     DB::raw("'fisioterapeuta' as tipo"),
                     'f.telefono',
                     DB::raw('u.correo as email'),
@@ -31,7 +29,7 @@ class ContactoController extends Controller
                     DB::raw('NULL as raw_id')
                 )
                 ->when($search, fn($q) =>
-                    $q->where(DB::raw("CONCAT(f.nombre, ' ', f.apellido)"), 'like', "%$search%")
+                    $q->where(DB::raw("CONCAT_WS(' ', f.nombre, f.apellido)"), 'like', "%$search%")
                       ->orWhere('u.correo', 'like', "%$search%")
                 )
                 ->get()
@@ -42,7 +40,7 @@ class ContactoController extends Controller
             ? DB::table('pacientes as p')
                 ->select(
                     DB::raw("CONCAT('pac_', p.paciente_id) as id"),
-                    DB::raw("CONCAT(p.nombre, ' ', p.apellido) as nombre"),
+                    DB::raw("CONCAT_WS(' ', p.nombre, p.apellido) as nombre"),
                     DB::raw("'paciente' as tipo"),
                     'p.telefono',
                     DB::raw("NULL as email"),
@@ -51,7 +49,7 @@ class ContactoController extends Controller
                     DB::raw('NULL as raw_id')
                 )
                 ->when($search, fn($q) =>
-                    $q->where(DB::raw("CONCAT(p.nombre, ' ', p.apellido)"), 'like', "%$search%")
+                    $q->where(DB::raw("CONCAT_WS(' ', p.nombre, p.apellido)"), 'like', "%$search%")
                 )
                 ->get()
             : collect();
@@ -82,18 +80,10 @@ class ContactoController extends Controller
             ? $contactosQuery->get()
             : collect();
 
-        // ── Unificar, paginar manualmente ──
-        $all   = $fisios->concat($pacientes)->concat($contactos);
-        $total = $all->count();
-        $items = $all->forPage($page, $perPage)->values();
+        // ── Unificar y devolver todos (sin paginación) ──
+        $all = $fisios->concat($pacientes)->concat($contactos)->values();
 
-        return response()->json([
-            'data'         => $items,
-            'current_page' => $page,
-            'per_page'     => $perPage,
-            'total'        => $total,
-            'last_page'    => (int) ceil($total / max(1, $perPage)),
-        ]);
+        return response()->json($all);
     }
 
     public function store(Request $request)
