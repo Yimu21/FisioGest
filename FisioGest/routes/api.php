@@ -946,13 +946,28 @@ Route::post('/pacientes/{id}/credenciales', function (Request $request, $id) {
     $paciente = DB::table('pacientes')->where('paciente_id', $id)->first();
     if (!$paciente) return response()->json(['success' => false, 'message' => 'Paciente no encontrado.'], 404);
 
-    // Si ya tiene usuario vinculado, solo activar portal_activo
+    // Si ya tiene usuario vinculado, verificar que sea un usuario de rol=paciente
     if ($paciente->usuario_id) {
+        $usuarioVinculado = DB::table('usuarios')
+            ->where('usuario_id', $paciente->usuario_id)
+            ->where('rol', 'paciente')
+            ->first();
+
+        if ($usuarioVinculado) {
+            // Cuenta de paciente real → solo reactivar portal
+            DB::table('pacientes')->where('paciente_id', $id)->update([
+                'portal_activo' => true,
+                'updated_at'    => now(),
+            ]);
+            return response()->json(['success' => true, 'message' => 'Acceso al portal habilitado.']);
+        }
+
+        // usuario_id apunta a un rol distinto (admin/fisioterapeuta heredado) → limpiar y crear cuenta nueva
         DB::table('pacientes')->where('paciente_id', $id)->update([
-            'portal_activo' => true,
+            'usuario_id'    => null,
+            'portal_activo' => false,
             'updated_at'    => now(),
         ]);
-        return response()->json(['success' => true, 'message' => 'Acceso al portal habilitado.']);
     }
 
     if (empty($request->correo) || empty($request->contrasena)) {

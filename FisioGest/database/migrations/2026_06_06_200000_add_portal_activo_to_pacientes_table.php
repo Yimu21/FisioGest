@@ -8,15 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('pacientes', function (Blueprint $table) {
-            $table->boolean('portal_activo')->default(false)->after('usuario_id');
-        });
+        // Ya incluida en la migración base desde la refactorización; se omite si existe.
+        if (!Schema::hasColumn('pacientes', 'portal_activo')) {
+            Schema::table('pacientes', function (Blueprint $table) {
+                $table->boolean('portal_activo')->default(false)->after('usuario_id');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('pacientes', function (Blueprint $table) {
-            $table->dropColumn('portal_activo');
-        });
+        if (Schema::hasColumn('pacientes', 'portal_activo')) {
+            Schema::table('pacientes', function (Blueprint $table) {
+                $table->dropColumn('portal_activo');
+            });
+        }
     }
 };

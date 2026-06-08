@@ -247,7 +247,7 @@
                   <div class="form-group">
                     <label>Contraseña *</label>
                     <div class="pass-wrap">
-                      <input v-model="form.contrasena" :type="showPassPac ? 'text' : 'password'" placeholder="Mínimo 8 caracteres" :required="!editingPaciente" />
+                      <input v-model="form.contrasena" :type="showPassPac ? 'text' : 'password'" placeholder="Mínimo 8 caracteres" :required="!editingPaciente || !editingPaciente.usuario_id" />
                       <button type="button" class="pass-eye" @click="showPassPac = !showPassPac" tabindex="-1">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <template v-if="showPassPac"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></template>
@@ -525,10 +525,15 @@ async function savePaciente() {
       // Guardar datos del paciente (el endpoint también maneja email/password si hay usuario vinculado)
       await pacienteService.update(editingPaciente.value.paciente_id, form.value)
 
-      // Si no tiene cuenta y se proveyeron credenciales → crear cuenta
-      if (!editingPaciente.value.usuario_id && form.value.correo && form.value.contrasena) {
+      // Si no tiene cuenta → crear credenciales (correo y contraseña obligatorios)
+      if (!editingPaciente.value.usuario_id) {
+        if (!form.value.correo || !form.value.contrasena) {
+          errorMsg.value = 'Correo y contraseña son requeridos para habilitar el acceso al portal.'
+          saving.value = false
+          return
+        }
         await pacienteService.crearCredenciales(editingPaciente.value.paciente_id, {
-          correo:    form.value.correo,
+          correo:     form.value.correo,
           contrasena: form.value.contrasena,
         })
       }

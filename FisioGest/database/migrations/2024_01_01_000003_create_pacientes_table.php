@@ -9,7 +9,9 @@ return new class extends Migration {
     {
         Schema::create('pacientes', function (Blueprint $table) {
             $table->id('paciente_id');
-            $table->unsignedBigInteger('usuario_id');
+            $table->unsignedBigInteger('usuario_id')->nullable();   // null = sin cuenta de portal
+            $table->string('correo', 191)->nullable()->unique();     // correo del paciente (portal)
+            $table->boolean('portal_activo')->default(false);        // acceso al portal habilitado
             $table->unsignedBigInteger('fisioterapeuta_id')->nullable();
             $table->string('nombre', 100);
             $table->string('apellido', 100);
@@ -23,7 +25,7 @@ return new class extends Migration {
             $table->foreign('usuario_id')
                   ->references('usuario_id')
                   ->on('usuarios')
-                  ->onDelete('cascade');
+                  ->onDelete('set null');   // si se elimina el usuario, el paciente queda sin cuenta
 
             $table->foreign('fisioterapeuta_id')
                   ->references('fisioterapeuta_id')

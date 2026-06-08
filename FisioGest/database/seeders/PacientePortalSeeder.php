@@ -26,6 +26,7 @@ class PacientePortalSeeder extends Seeder
         // 3. Crear registro en pacientes vinculado al usuario
         DB::table('pacientes')->insert([
             'usuario_id'        => $usuarioId,
+            'correo'            => 'paciente@fisiogest.com',
             'nombre'            => 'Carlos',
             'apellido'          => 'Méndez',
             'fecha_nacimiento'  => '1990-04-15',
@@ -34,6 +35,7 @@ class PacientePortalSeeder extends Seeder
             'direccion'         => 'San José, Costa Rica',
             'diagnostico'       => 'Lumbalgia crónica - en tratamiento',
             'fisioterapeuta_id' => $fisio?->fisioterapeuta_id ?? null,
+            'portal_activo'     => true,
             'created_at'        => now(),
             'updated_at'        => now(),
         ]);
