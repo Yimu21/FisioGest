@@ -10,57 +10,62 @@ class UsuarioSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('usuarios')->insert([
-            // ID 1 — Administrador del sistema
+        $usuarios = [
             [
                 'nombre'     => 'Administrador',
                 'correo'     => 'admin@fisiogest.com',
                 'contrasena' => Hash::make('admin123'),
                 'rol'        => 'admin',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
-            // IDs 2-6 — Fisioterapeutas (uno por cada especialista)
             [
                 'nombre'     => 'Manrivel Gorado',
                 'correo'     => 'manrivel@fisiogest.com',
                 'contrasena' => Hash::make('fisio123'),
                 'rol'        => 'fisioterapeuta',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'nombre'     => 'Barvis Raten',
                 'correo'     => 'barvis@fisiogest.com',
                 'contrasena' => Hash::make('fisio123'),
                 'rol'        => 'fisioterapeuta',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'nombre'     => 'Bardena Drides',
                 'correo'     => 'bardena@fisiogest.com',
                 'contrasena' => Hash::make('fisio123'),
                 'rol'        => 'fisioterapeuta',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'nombre'     => 'Marina Gomez',
                 'correo'     => 'marina@fisiogest.com',
                 'contrasena' => Hash::make('fisio123'),
                 'rol'        => 'fisioterapeuta',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
             [
                 'nombre'     => 'Retmen Nones',
                 'correo'     => 'retmen@fisiogest.com',
                 'contrasena' => Hash::make('fisio123'),
                 'rol'        => 'fisioterapeuta',
-                'created_at' => now(),
-                'updated_at' => now(),
             ],
-        ]);
+            [
+                'nombre'     => 'Karen Portillo',
+                'correo'     => 'karen@fisiogest.com',
+                'contrasena' => Hash::make('fisio123'),
+                'rol'        => 'fisioterapeuta',
+            ],
+             [
+                'nombre'     => 'Esmeralda Cisneros',
+                'correo'     => 'esmeralda@fisiogest.com',
+                'contrasena' => Hash::make('paciente123'),
+                'rol'        => 'paciente',
+            ],
+        ];
+
+        foreach ($usuarios as $u) {
+            DB::table('usuarios')->updateOrInsert(
+                ['correo' => $u['correo']],
+                array_merge($u, ['created_at' => now(), 'updated_at' => now()])
+            );
+        }
     }
 }

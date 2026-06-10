@@ -12,6 +12,19 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// Si el servidor responde 401 (no autenticado o token expirado) → cerrar sesión
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/'
+    }
+    return Promise.reject(error)
+  }
+)
+
 // ── Helpers de sesión ────────────────────────────────────────────────────────
 export function saveUser(user, token) {
   localStorage.setItem('token', token)
@@ -47,6 +60,7 @@ export const citaService = {
   create:       (data) => api.post('/citas', data),
   update:       (id, data) => api.put(`/citas/${id}`, data),
   updateEstado: (id, estado) => api.patch(`/citas/${id}`, { estado }),
+  delete:       (id) => api.delete(`/citas/${id}`),
 }
 
 export const pacienteService = {
@@ -57,8 +71,10 @@ export const pacienteService = {
 }
 
 export const inventarioService = {
-  getAll:  () => api.get('/inventario'),
-  create:  (data) => api.post('/inventario', data),
+  getAll:  ()         => api.get('/inventario'),
+  create:  (data)     => api.post('/inventario', data),
+  update:  (id, data) => api.put(`/inventario/${id}`, data),
+  delete:  (id)       => api.delete(`/inventario/${id}`),
 }
 
 export const fisioterapeutaService = {
@@ -67,6 +83,34 @@ export const fisioterapeutaService = {
 
 // Endpoints exclusivos del fisioterapeuta autenticado (filtrados en backend)
 export const fisioService = {
-  misPacientes: () => api.get('/fisio/mis-pacientes'),
-  misCitas:     () => api.get('/fisio/mis-citas'),
+  misPacientes:    () => api.get('/fisio/mis-pacientes'),
+  misCitas:        () => api.get('/fisio/mis-citas'),
+  misAsignaciones: () => api.get('/fisio/mis-asignaciones'),
+}
+
+export const asignacionesService = {
+  getAll:  ()     => api.get('/asignaciones'),
+  create:  (data) => api.post('/asignaciones', data),
+  liberar: (id)   => api.patch(`/asignaciones/${id}/liberar`),
+}
+
+export const agendaService = {
+  getHorario:     ()        => api.get('/fisio/mi-horario'),
+  saveHorario:    (horario) => api.put('/fisio/mi-horario', { horario }),
+  getEventos:     ()        => api.get('/fisio/eventos'),
+  createEvento:   (data)    => api.post('/fisio/eventos', data),
+  updateEvento:   (id, data) => api.put(`/fisio/eventos/${id}`, data),
+  deleteEvento:   (id)      => api.delete(`/fisio/eventos/${id}`),
+}
+
+export const notificacionesService = {
+  getAll:       () => api.get('/admin/notificaciones'),
+  marcarLeida:  (id) => api.patch(`/admin/notificaciones/${id}/leida`),
+  marcarTodas:  () => api.patch('/admin/notificaciones/marcar-todas'),
+}
+
+export const fisioNotificacionesService = {
+  getAll:      () => api.get('/fisio/notificaciones'),
+  marcarLeida: (id) => api.patch(`/fisio/notificaciones/${id}/leida`),
+  marcarTodas: () => api.patch('/fisio/notificaciones/marcar-todas'),
 }

@@ -52,37 +52,22 @@
           Inventario
         </router-link>
 
-        <div class="nav-group">
-          <div class="nav-item" @click="toggle('progresos')">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-            Progresos
-            <svg class="chevron" :class="{ open: open.progresos }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
-          <div class="nav-sub" v-show="open.progresos">
-            <span class="sub-item">Ver progresos</span>
-            <span class="sub-item">Nuevo progreso</span>
-          </div>
-        </div>
+      
 
-        <div class="nav-item">
+        <router-link to="/configuracion" class="nav-item" active-class="active">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
           Configuración
-        </div>
+        </router-link>
 
-        <div class="nav-item">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+       <router-link to="/contactos" class="nav-item" active-class="active">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
           Contactos
-        </div>
+        </router-link>
       </nav>
 
       <button class="logout-btn" @click="logout">
@@ -100,12 +85,55 @@
       <!-- Top bar -->
       <header class="top-bar">
         <div class="topbar-right">
-          <button class="icon-btn" title="Notificaciones">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-          </button>
+
+          <!-- Campana de notificaciones -->
+          <div class="notif-wrapper" ref="notifRef">
+            <button class="icon-btn notif-btn" title="Notificaciones" @click="toggleNotif">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span v-if="noLeidas > 0" class="notif-badge">{{ noLeidas > 9 ? '9+' : noLeidas }}</span>
+            </button>
+
+            <!-- Dropdown -->
+            <div v-if="showNotif" class="notif-dropdown">
+              <div class="notif-header">
+                <span class="notif-title">Notificaciones</span>
+                <button v-if="noLeidas > 0" class="notif-mark-all" @click="marcarTodas">
+                  Marcar todas como leídas
+                </button>
+              </div>
+
+              <div v-if="notificaciones.length === 0" class="notif-empty">
+                No hay notificaciones
+              </div>
+
+              <div v-else class="notif-list">
+                <div
+                  v-for="n in notificaciones"
+                  :key="n.notificacion_id"
+                  class="notif-item"
+                  :class="{ unread: !n.leida }"
+                  @click="marcarLeida(n)"
+                >
+                  <div class="notif-icon-wrap">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                  </div>
+                  <div class="notif-body">
+                    <p class="notif-item-title">{{ n.titulo }}</p>
+                    <p class="notif-item-msg">{{ n.mensaje }}</p>
+                    <p class="notif-item-time">{{ formatNotifTime(n.created_at) }}</p>
+                  </div>
+                  <span v-if="!n.leida" class="notif-dot"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <button class="icon-btn" title="Ayuda">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -138,9 +166,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { authService, clearUser, getUser } from '@/services/api'
+import { authService, clearUser, getUser, getUserRole, notificacionesService, fisioNotificacionesService } from '@/services/api'
 
 const router      = useRouter()
 const open        = ref({ progresos: false })
@@ -156,6 +184,69 @@ async function logout() {
   clearUser()
   router.push('/')
 }
+
+// ── Notificaciones ────────────────────────────────────────────────────────
+const notificaciones = ref([])
+const showNotif      = ref(false)
+const notifRef       = ref(null)
+
+const noLeidas = computed(() => notificaciones.value.filter(n => !n.leida).length)
+
+// Seleccionar servicio según rol del usuario
+const esFisio = computed(() => getUserRole() === 'fisioterapeuta')
+const notifSvc = computed(() => esFisio.value ? fisioNotificacionesService : notificacionesService)
+
+async function cargarNotificaciones() {
+  try {
+    const res = await notifSvc.value.getAll()
+    notificaciones.value = res.data
+  } catch {}
+}
+
+function toggleNotif() {
+  showNotif.value = !showNotif.value
+  if (showNotif.value) cargarNotificaciones()
+}
+
+async function marcarLeida(n) {
+  if (n.leida) return
+  try {
+    await notifSvc.value.marcarLeida(n.notificacion_id)
+    n.leida = true
+  } catch {}
+}
+
+async function marcarTodas() {
+  try {
+    await notifSvc.value.marcarTodas()
+    notificaciones.value.forEach(n => { n.leida = true })
+  } catch {}
+}
+
+function formatNotifTime(ts) {
+  if (!ts) return ''
+  try {
+    const iso = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z'
+    return new Date(iso).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  } catch { return ts }
+}
+
+function handleClickOutside(e) {
+  if (notifRef.value && !notifRef.value.contains(e.target)) {
+    showNotif.value = false
+  }
+}
+
+onMounted(() => {
+  cargarNotificaciones()
+  document.addEventListener('click', handleClickOutside)
+  // Polling cada 60s para notificaciones nuevas
+  const interval = setInterval(cargarNotificaciones, 60000)
+  onUnmounted(() => {
+    clearInterval(interval)
+    document.removeEventListener('click', handleClickOutside)
+  })
+})
 </script>
 
 <style scoped>
@@ -351,5 +442,146 @@ async function logout() {
   flex: 1;
   overflow-y: auto;
   padding: 1.75rem;
+}
+
+/* ── Notificaciones ── */
+.notif-wrapper {
+  position: relative;
+}
+
+.notif-btn {
+  position: relative;
+}
+
+.notif-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.notif-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 340px;
+  background: #141414;
+  border: 1px solid #222;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  z-index: 500;
+  overflow: hidden;
+  animation: fadeDown 0.15s ease;
+}
+
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #1c1c1c;
+}
+
+.notif-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #e4e4e7;
+}
+
+.notif-mark-all {
+  background: none;
+  border: none;
+  color: #4ade80;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+.notif-mark-all:hover { text-decoration: underline; }
+
+.notif-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #4b5563;
+  font-size: 0.82rem;
+}
+
+.notif-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #1a1a1a;
+  cursor: pointer;
+  transition: background 0.12s;
+  position: relative;
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: rgba(255,255,255,0.03); }
+.notif-item.unread { background: rgba(74,222,128,0.04); }
+
+.notif-icon-wrap {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(74,222,128,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4ade80;
+  margin-top: 1px;
+}
+
+.notif-body { flex: 1; min-width: 0; }
+
+.notif-item-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e4e4e7;
+  margin-bottom: 2px;
+}
+
+.notif-item-msg {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.notif-item-time {
+  font-size: 0.68rem;
+  color: #4b5563;
+}
+
+.notif-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  margin-top: 5px;
 }
 </style>
