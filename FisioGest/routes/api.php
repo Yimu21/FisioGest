@@ -305,15 +305,30 @@ Route::middleware('auth:sanctum')->group(function () {
         $nombrePac   = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
         $fechaFmt    = (new \DateTime($request->fecha_hora))->format('d/m/Y \a \l\a\s H:i');
 
+        // Notificar al admin
         DB::table('notificaciones')->insert([
             'tipo'              => 'cita_agendada_fisio',
             'titulo'            => 'Nueva cita agendada por fisioterapeuta',
             'mensaje'           => "{$nombreFisio} agendó una nueva cita para {$nombrePac} el {$fechaFmt}.",
             'leida'             => false,
             'fisioterapeuta_id' => $fisioId,
+            'paciente_id'       => null,
             'created_at'        => now(),
             'updated_at'        => now(),
         ]);
+
+        // Notificar al paciente
+        if ($paciente) {
+            DB::table('notificaciones')->insert([
+                'tipo'        => 'cita_programada',
+                'titulo'      => 'Cita programada',
+                'mensaje'     => "Tu fisioterapeuta {$nombreFisio} ha programado una cita para el {$fechaFmt}.",
+                'leida'       => false,
+                'paciente_id' => $paciente->paciente_id,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]);
+        }
 
         return response()->json(['success' => true, 'message' => 'Cita agendada correctamente.'], 201);
     });
@@ -348,15 +363,30 @@ Route::middleware('auth:sanctum')->group(function () {
         $nombrePac   = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
         $fechaFmt    = (new \DateTime($request->fecha_hora))->format('d/m/Y \a \l\a\s H:i');
 
+        // Notificar al admin
         DB::table('notificaciones')->insert([
             'tipo'              => 'cita_agendada_fisio',
             'titulo'            => 'Cita reagendada por fisioterapeuta',
             'mensaje'           => "{$nombreFisio} reagendó la cita de {$nombrePac} para el {$fechaFmt}.",
             'leida'             => false,
             'fisioterapeuta_id' => $fisioId,
+            'paciente_id'       => null,
             'created_at'        => now(),
             'updated_at'        => now(),
         ]);
+
+        // Notificar al paciente
+        if ($paciente) {
+            DB::table('notificaciones')->insert([
+                'tipo'        => 'cita_reagendada',
+                'titulo'      => 'Cita reagendada',
+                'mensaje'     => "Tu fisioterapeuta {$nombreFisio} ha reagendado tu cita para el {$fechaFmt}.",
+                'leida'       => false,
+                'paciente_id' => $paciente->paciente_id,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]);
+        }
 
         return response()->json(['success' => true, 'message' => 'Cita reagendada correctamente.']);
     });
@@ -404,22 +434,47 @@ Route::middleware('auth:sanctum')->group(function () {
             $mensaje = "{$nombreFisio} restableció la cita de {$nombrePac} del {$fechaFmt} como programada.";
         }
 
+        // Notificar al admin
         DB::table('notificaciones')->insert([
             'tipo'              => 'cita_actualizada_fisio',
             'titulo'            => $titulo,
             'mensaje'           => $mensaje,
             'leida'             => false,
             'fisioterapeuta_id' => $fisioId,
+            'paciente_id'       => null,
             'created_at'        => now(),
             'updated_at'        => now(),
         ]);
+
+        // Notificar al paciente
+        if ($paciente) {
+            if ($request->estado === 'cancelada') {
+                $titPac = 'Tu cita fue cancelada';
+                $msgPac = "Tu fisioterapeuta {$nombreFisio} canceló la cita del {$fechaFmt}. Será necesario reprogramarla.";
+            } elseif ($request->estado === 'atendida') {
+                $titPac = 'Cita completada';
+                $msgPac = "Tu cita del {$fechaFmt} fue marcada como atendida. ¡Gracias por asistir!";
+            } else {
+                $titPac = 'Cita reprogramada a pendiente';
+                $msgPac = "Tu cita del {$fechaFmt} fue restablecida a programada.";
+            }
+            DB::table('notificaciones')->insert([
+                'tipo'        => 'estado_cita',
+                'titulo'      => $titPac,
+                'mensaje'     => $msgPac,
+                'leida'       => false,
+                'paciente_id' => $paciente->paciente_id,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]);
+        }
 
         return response()->json(['success' => true, 'message' => 'Estado actualizado.']);
     });
 
     // ── Notificaciones (admin) ───────────────────────────────────────────────
     // Notificaciones destinadas al admin
-    $tiposAdmin = ['horario_actualizado', 'cita_actualizada_fisio', 'cita_agendada_fisio'];
+    $tiposAdmin = ['horario_actualizado', 'cita_actualizada_fisio', 'cita_agendada_fisio', 'cita_agendada_paciente'];
 
     Route::get('/admin/notificaciones', function (Request $request) use ($tiposAdmin) {
         $notifs = DB::table('notificaciones')
@@ -529,13 +584,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/exportar/pacientes', function () {
         $pacientes = DB::table('pacientes as p')
             ->leftJoin('fisioterapeutas as f', 'p.fisioterapeuta_id', '=', 'f.fisioterapeuta_id')
-            ->select('p.nombre', 'p.apellido', 'p.genero', 'p.fecha_nacimiento', 'p.telefono',
+            ->select('p.nombre', 'p.apellido', 'p.genero', 'p.fecha_nacimiento', 'p.telefono', 'p.correo',
                      DB::raw("CONCAT(f.nombre, ' ', f.apellido) as especialista"))
             ->get();
 
-        $csv = "Nombre,Apellido,Género,Fecha Nacimiento,Teléfono,Especialista\n";
+        $csv = "Nombre,Apellido,Género,Fecha Nacimiento,Teléfono,Correo,Especialista\n";
         foreach ($pacientes as $p) {
-            $csv .= "\"{$p->nombre}\",\"{$p->apellido}\",\"{$p->genero}\",\"{$p->fecha_nacimiento}\",\"{$p->telefono}\",\"{$p->especialista}\"\n";
+            $correo = $p->correo ?? '';
+            $csv .= "\"{$p->nombre}\",\"{$p->apellido}\",\"{$p->genero}\",\"{$p->fecha_nacimiento}\",\"{$p->telefono}\",\"{$correo}\",\"{$p->especialista}\"\n";
         }
 
         return response($csv, 200, [
@@ -773,6 +829,19 @@ Route::post('/asignaciones', function (Request $request) use ($sincEstado) {
 
     $sincEstado($inventarioId); // Actualizar estado en BD
 
+    // Notificar al paciente
+    if ($request->paciente_id && $item) {
+        DB::table('notificaciones')->insert([
+            'tipo'        => 'equipo_asignado',
+            'titulo'      => 'Equipo asignado',
+            'mensaje'     => "Se te ha asignado el equipo \"{$item->nombre}\" para tu tratamiento.",
+            'leida'       => false,
+            'paciente_id' => $request->paciente_id,
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+    }
+
     return response()->json(['success' => true, 'id' => $id, 'message' => 'Equipo asignado correctamente.'], 201);
 });
 
@@ -785,7 +854,22 @@ Route::patch('/asignaciones/{id}/liberar', function (Request $request, $id) use 
         'updated_at'       => now(),
     ]);
 
-    if ($asignacion) $sincEstado((int) $asignacion->inventario_id); // Actualizar estado en BD
+    if ($asignacion) {
+        $sincEstado((int) $asignacion->inventario_id); // Actualizar estado en BD
+
+        // Notificar al paciente
+        $itemLiberado = DB::table('inventario')->where('id_inventario', $asignacion->inventario_id)->first();
+        $nombreEquipo = $itemLiberado ? $itemLiberado->nombre : 'el equipo asignado';
+        DB::table('notificaciones')->insert([
+            'tipo'        => 'equipo_liberado',
+            'titulo'      => 'Equipo devuelto',
+            'mensaje'     => "El equipo \"{$nombreEquipo}\" ha sido registrado como devuelto.",
+            'leida'       => false,
+            'paciente_id' => $asignacion->paciente_id,
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+    }
 
     return response()->json(['success' => true, 'message' => 'Equipo liberado correctamente.']);
 });
@@ -795,15 +879,14 @@ Route::patch('/asignaciones/{id}/liberar', function (Request $request, $id) use 
 // 2. MÓDULO DE PACIENTES (Blindado contra errores NOT NULL de usuario_id)
 // =========================================================================
 
-// Obtener lista de pacientes para Vue
+// Obtener lista de pacientes (correo vive directamente en pacientes)
 Route::get('/pacientes', function () {
-    $pacientes = DB::table('pacientes')->get();
-    return response()->json($pacientes);
+    return response()->json(DB::table('pacientes')->get());
 });
 
 // Editar paciente
 Route::put('/pacientes/{id}', function (Request $request, $id) {
-    DB::table('pacientes')->where('paciente_id', $id)->update([
+    $data = [
         'nombre'            => $request->nombre,
         'apellido'          => $request->apellido,
         'fecha_nacimiento'  => $request->fecha_nacimiento,
@@ -811,8 +894,141 @@ Route::put('/pacientes/{id}', function (Request $request, $id) {
         'telefono'          => $request->telefono,
         'fisioterapeuta_id' => $request->fisioterapeuta_id ?: null,
         'updated_at'        => now(),
-    ]);
+    ];
+
+    // Guardar correo directamente en pacientes si se envió
+    if (!empty($request->correo)) {
+        $existe = DB::table('pacientes')
+            ->where('correo', $request->correo)
+            ->where('paciente_id', '!=', $id)
+            ->exists();
+        if ($existe) {
+            return response()->json(['success' => false, 'message' => 'El correo ya está en uso.'], 409);
+        }
+        $data['correo'] = $request->correo;
+
+        // Sincronizar con usuarios si el paciente tiene cuenta propia (rol=paciente)
+        $paciente = DB::table('pacientes')->where('paciente_id', $id)->first();
+        if ($paciente?->usuario_id) {
+            $u = DB::table('usuarios')
+                ->where('usuario_id', $paciente->usuario_id)
+                ->where('rol', 'paciente')
+                ->first();
+            if ($u) {
+                DB::table('usuarios')->where('usuario_id', $u->usuario_id)
+                    ->update(['correo' => $request->correo, 'updated_at' => now()]);
+            }
+        }
+    }
+
+    // Cambiar contraseña si se envió (solo si tiene cuenta propia)
+    if (!empty($request->contrasena)) {
+        $paciente = $paciente ?? DB::table('pacientes')->where('paciente_id', $id)->first();
+        if ($paciente?->usuario_id) {
+            $u = DB::table('usuarios')
+                ->where('usuario_id', $paciente->usuario_id)
+                ->where('rol', 'paciente')
+                ->first();
+            if ($u) {
+                DB::table('usuarios')->where('usuario_id', $u->usuario_id)
+                    ->update(['contrasena' => \Illuminate\Support\Facades\Hash::make($request->contrasena), 'updated_at' => now()]);
+            }
+        }
+    }
+
+    DB::table('pacientes')->where('paciente_id', $id)->update($data);
+
     return response()->json(['success' => true, 'message' => 'Paciente actualizado.']);
+});
+
+// Crear credenciales de acceso al portal para un paciente (primera vez)
+Route::post('/pacientes/{id}/credenciales', function (Request $request, $id) {
+    $paciente = DB::table('pacientes')->where('paciente_id', $id)->first();
+    if (!$paciente) return response()->json(['success' => false, 'message' => 'Paciente no encontrado.'], 404);
+
+    // Si ya tiene usuario vinculado, verificar que sea un usuario de rol=paciente
+    if ($paciente->usuario_id) {
+        $usuarioVinculado = DB::table('usuarios')
+            ->where('usuario_id', $paciente->usuario_id)
+            ->where('rol', 'paciente')
+            ->first();
+
+        if ($usuarioVinculado) {
+            // Cuenta de paciente real → solo reactivar portal
+            DB::table('pacientes')->where('paciente_id', $id)->update([
+                'portal_activo' => true,
+                'updated_at'    => now(),
+            ]);
+            return response()->json(['success' => true, 'message' => 'Acceso al portal habilitado.']);
+        }
+
+        // usuario_id apunta a un rol distinto (admin/fisioterapeuta heredado) → limpiar y crear cuenta nueva
+        DB::table('pacientes')->where('paciente_id', $id)->update([
+            'usuario_id'    => null,
+            'portal_activo' => false,
+            'updated_at'    => now(),
+        ]);
+    }
+
+    if (empty($request->correo) || empty($request->contrasena)) {
+        return response()->json(['success' => false, 'message' => 'Correo y contraseña son requeridos.'], 422);
+    }
+
+    if (DB::table('usuarios')->where('correo', $request->correo)->exists()) {
+        return response()->json(['success' => false, 'message' => 'El correo ya está registrado.'], 409);
+    }
+
+    $usuarioId = DB::table('usuarios')->insertGetId([
+        'nombre'     => trim("{$paciente->nombre} {$paciente->apellido}"),
+        'correo'     => $request->correo,
+        'contrasena' => \Illuminate\Support\Facades\Hash::make($request->contrasena),
+        'rol'        => 'paciente',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    // Guardar correo también en pacientes.correo (fuente de verdad)
+    DB::table('pacientes')->where('paciente_id', $id)->update([
+        'usuario_id'    => $usuarioId,
+        'correo'        => $request->correo,
+        'portal_activo' => true,
+        'updated_at'    => now(),
+    ]);
+
+    return response()->json(['success' => true, 'message' => 'Acceso al portal habilitado correctamente.']);
+});
+
+// Revocar acceso: solo desactiva portal_activo, conserva el usuario
+Route::patch('/pacientes/{id}/revocar-acceso', function ($id) {
+    $paciente = DB::table('pacientes')->where('paciente_id', $id)->first();
+    if (!$paciente || !$paciente->usuario_id) {
+        return response()->json(['success' => false, 'message' => 'El paciente no tiene cuenta vinculada.'], 404);
+    }
+
+    // Invalidar tokens activos
+    DB::table('personal_access_tokens')->where('tokenable_id', $paciente->usuario_id)->delete();
+
+    DB::table('pacientes')->where('paciente_id', $id)->update([
+        'portal_activo' => false,
+        'updated_at'    => now(),
+    ]);
+
+    return response()->json(['success' => true, 'message' => 'Acceso al portal revocado.']);
+});
+
+// Habilitar acceso: reactiva portal_activo sin necesitar nueva contraseña
+Route::patch('/pacientes/{id}/habilitar-acceso', function ($id) {
+    $paciente = DB::table('pacientes')->where('paciente_id', $id)->first();
+    if (!$paciente || !$paciente->usuario_id) {
+        return response()->json(['success' => false, 'message' => 'El paciente no tiene cuenta vinculada. Usa el formulario de credenciales.'], 422);
+    }
+
+    DB::table('pacientes')->where('paciente_id', $id)->update([
+        'portal_activo' => true,
+        'updated_at'    => now(),
+    ]);
+
+    return response()->json(['success' => true, 'message' => 'Acceso al portal habilitado.']);
 });
 
 // Eliminar paciente
@@ -821,23 +1037,46 @@ Route::delete('/pacientes/{id}', function ($id) {
     return response()->json(['success' => true, 'message' => 'Paciente eliminado.']);
 });
 
-// Guardar paciente desde Vue
+// Crear nuevo paciente
 Route::post('/pacientes', function (Request $request) {
-    DB::table('pacientes')->insert([
-        'usuario_id'        => 1,
+    $pacienteId = DB::table('pacientes')->insertGetId([
+        'usuario_id'        => null,
         'nombre'            => $request->nombre,
         'apellido'          => $request->apellido,
         'fecha_nacimiento'  => $request->fecha_nacimiento,
         'genero'            => $request->genero,
         'telefono'          => $request->telefono,
         'fisioterapeuta_id' => $request->fisioterapeuta_id ?: null,
+        'portal_activo'     => false,
         'created_at'        => now(),
         'updated_at'        => now(),
     ]);
 
+    // Si se enviaron credenciales, crear usuario y vincularlo
+    if (!empty($request->correo) && !empty($request->contrasena)) {
+        if (!DB::table('usuarios')->where('correo', $request->correo)->exists()) {
+            $paciente   = DB::table('pacientes')->where('paciente_id', $pacienteId)->first();
+            $usuarioId  = DB::table('usuarios')->insertGetId([
+                'nombre'     => trim("{$paciente->nombre} {$paciente->apellido}"),
+                'correo'     => $request->correo,
+                'contrasena' => \Illuminate\Support\Facades\Hash::make($request->contrasena),
+                'rol'        => 'paciente',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('pacientes')->where('paciente_id', $pacienteId)->update([
+                'usuario_id'    => $usuarioId,
+                'correo'        => $request->correo,
+                'portal_activo' => true,
+                'updated_at'    => now(),
+            ]);
+        }
+    }
+
     return response()->json([
-        'success' => true,
-        'message' => 'Paciente guardado exitosamente.'
+        'success'     => true,
+        'message'     => 'Paciente guardado exitosamente.',
+        'paciente_id' => $pacienteId,
     ]);
 });
 
@@ -870,19 +1109,38 @@ Route::post('/citas', function (Request $request) {
         'updated_at'        => now(),
     ]);
 
-    // Notificar al fisioterapeuta sobre la nueva cita
+    $paciente  = DB::table('pacientes')->where('paciente_id', $request->paciente_id)->first();
+    $nombrePac = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
+    $fechaFmt  = (new \DateTime($request->fecha_hora))->format('d/m/Y \a \l\a\s H:i');
+
+    // Notificar al fisioterapeuta
     if ($request->fisioterapeuta_id) {
-        $paciente  = DB::table('pacientes')->where('paciente_id', $request->paciente_id)->first();
-        $nombrePac = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
-        $fechaFmt  = (new \DateTime($request->fecha_hora))->format('d/m/Y \a \l\a\s H:i');
+        $fisio     = DB::table('fisioterapeutas')->where('fisioterapeuta_id', $request->fisioterapeuta_id)->first();
+        $nombreFisio = $fisio ? "{$fisio->nombre} {$fisio->apellido}" : 'tu especialista';
         DB::table('notificaciones')->insert([
             'tipo'              => 'nueva_cita',
             'titulo'            => 'Nueva cita agendada',
             'mensaje'           => "{$nombrePac} tiene una cita programada para el {$fechaFmt}.",
             'leida'             => false,
             'fisioterapeuta_id' => $request->fisioterapeuta_id,
+            'paciente_id'       => null,
             'created_at'        => now(),
             'updated_at'        => now(),
+        ]);
+    }
+
+    // Notificar al paciente
+    if ($paciente) {
+        $fisio = $fisio ?? ($request->fisioterapeuta_id ? DB::table('fisioterapeutas')->where('fisioterapeuta_id', $request->fisioterapeuta_id)->first() : null);
+        $nombreFisio = $fisio ? "{$fisio->nombre} {$fisio->apellido}" : 'tu especialista';
+        DB::table('notificaciones')->insert([
+            'tipo'        => 'cita_programada',
+            'titulo'      => 'Cita programada',
+            'mensaje'     => "Tu cita ha sido programada para el {$fechaFmt} con {$nombreFisio}.",
+            'leida'       => false,
+            'paciente_id' => $paciente->paciente_id,
+            'created_at'  => now(),
+            'updated_at'  => now(),
         ]);
     }
 
@@ -927,8 +1185,8 @@ Route::patch('/citas/{id}', function (Request $request, $id) {
         'updated_at' => now(),
     ]);
 
-    // Notificar al fisioterapeuta si la cita fue cancelada o marcada como atendida
-    if ($cita && $cita->fisioterapeuta_id && in_array($request->estado, ['cancelada', 'atendida'])) {
+    // Notificar al fisioterapeuta y paciente por cualquier cambio de estado
+    if ($cita && $cita->fisioterapeuta_id) {
         $paciente  = DB::table('pacientes')->where('paciente_id', $cita->paciente_id)->first();
         $nombrePac = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
         $fechaFmt  = (new \DateTime($cita->fecha_hora))->format('d/m/Y \a \l\a\s H:i');
@@ -936,9 +1194,18 @@ Route::patch('/citas/{id}', function (Request $request, $id) {
         if ($request->estado === 'cancelada') {
             $titulo  = 'Cita cancelada';
             $mensaje = "La cita de {$nombrePac} del {$fechaFmt} ha sido cancelada. El horario queda disponible.";
-        } else {
+            $titPac  = 'Tu cita fue cancelada';
+            $msgPac  = "Tu cita del {$fechaFmt} ha sido cancelada. Contacta a tu fisioterapeuta para reprogramarla.";
+        } elseif ($request->estado === 'atendida') {
             $titulo  = 'Cita marcada como atendida';
             $mensaje = "La cita de {$nombrePac} del {$fechaFmt} fue marcada como atendida.";
+            $titPac  = 'Cita marcada como atendida';
+            $msgPac  = "Tu cita del {$fechaFmt} fue marcada como atendida. ¡Gracias por tu asistencia!";
+        } else {
+            $titulo  = 'Cita reprogramada';
+            $mensaje = "La cita de {$nombrePac} del {$fechaFmt} ha sido reprogramada como pendiente.";
+            $titPac  = 'Tu cita fue reprogramada';
+            $msgPac  = "Tu cita del {$fechaFmt} ha sido reprogramada. Está nuevamente activa.";
         }
 
         DB::table('notificaciones')->insert([
@@ -947,9 +1214,23 @@ Route::patch('/citas/{id}', function (Request $request, $id) {
             'mensaje'           => $mensaje,
             'leida'             => false,
             'fisioterapeuta_id' => $cita->fisioterapeuta_id,
+            'paciente_id'       => null,
             'created_at'        => now(),
             'updated_at'        => now(),
         ]);
+
+        // Notificar al paciente
+        if ($paciente) {
+            DB::table('notificaciones')->insert([
+                'tipo'        => 'estado_cita',
+                'titulo'      => $titPac,
+                'mensaje'     => $msgPac,
+                'leida'       => false,
+                'paciente_id' => $paciente->paciente_id,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]);
+        }
     }
 
     return response()->json(['success' => true, 'message' => 'Estado actualizado.']);
@@ -1058,10 +1339,13 @@ Route::put('/fisioterapeutas/{id}', function (Request $request, $id) {
         'updated_at'   => now(),
     ]);
 
-    // Actualizar credenciales si se enviaron
+    // Actualizar credenciales y nombre en usuarios si tiene cuenta vinculada
     $fisio = DB::table('fisioterapeutas')->where('fisioterapeuta_id', $id)->first();
     if ($fisio?->usuario_id) {
-        $credUpdate = ['updated_at' => now()];
+        $credUpdate = [
+            'nombre'     => trim("{$nombre} {$apellido}"),
+            'updated_at' => now(),
+        ];
 
         if (!empty($request->correo)) {
             // Verificar que el correo no esté en uso por otro usuario
@@ -1113,5 +1397,357 @@ Route::put('/fisioterapeutas/{id}/horario', function (Request $request, $id) {
 // =========================================================================
 Route::get('contactos/stats', [ContactoController::class, 'stats']);
 Route::apiResource('contactos', ContactoController::class);
+
+// =========================================================================
+// 6. PORTAL DEL PACIENTE
+// =========================================================================
+
+/** Helper: obtener paciente_id desde el usuario autenticado */
+$getPacienteId = function (Request $request) {
+    $paciente = DB::table('pacientes')
+        ->where('usuario_id', $request->user()->usuario_id)
+        ->first();
+    return $paciente?->paciente_id;
+};
+
+// ── Perfil personal ──────────────────────────────────────────────────────
+Route::get('/paciente/mi-perfil', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json(null, 403);
+    return response()->json(
+        DB::table('pacientes')->where('paciente_id', $pacienteId)->first()
+    );
+});
+
+Route::put('/paciente/mi-perfil', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json(['success' => false], 403);
+
+    DB::table('pacientes')->where('paciente_id', $pacienteId)->update([
+        'nombre'           => $request->nombre,
+        'apellido'         => $request->apellido,
+        'telefono'         => $request->telefono,
+        'direccion'        => $request->direccion ?? null,
+        'fecha_nacimiento' => $request->fecha_nacimiento,
+        'genero'           => $request->genero,
+        'updated_at'       => now(),
+    ]);
+
+    // Sincronizar nombre en usuarios
+    DB::table('usuarios')->where('usuario_id', $request->user()->usuario_id)->update([
+        'nombre'     => trim("{$request->nombre} {$request->apellido}"),
+        'updated_at' => now(),
+    ]);
+
+    return response()->json(['success' => true, 'message' => 'Perfil actualizado.']);
+});
+
+// ── Cambiar contraseña ───────────────────────────────────────────────────
+Route::put('/paciente/mi-cuenta', function (Request $request) {
+    $usuario = $request->user();
+
+    if (!\Illuminate\Support\Facades\Hash::check($request->contrasena_actual, $usuario->contrasena)) {
+        return response()->json(['success' => false, 'message' => 'La contraseña actual no es correcta.'], 422);
+    }
+    if (empty($request->contrasena_nueva)) {
+        return response()->json(['success' => false, 'message' => 'La nueva contraseña no puede estar vacía.'], 422);
+    }
+
+    DB::table('usuarios')->where('usuario_id', $usuario->usuario_id)->update([
+        'contrasena' => \Illuminate\Support\Facades\Hash::make($request->contrasena_nueva),
+        'updated_at' => now(),
+    ]);
+
+    return response()->json(['success' => true, 'message' => 'Contraseña actualizada correctamente.']);
+});
+
+// ── Mis citas ────────────────────────────────────────────────────────────
+Route::get('/paciente/mis-citas', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json([]);
+
+    $citas = DB::table('citas as c')
+        ->leftJoin('fisioterapeutas as f', 'c.fisioterapeuta_id', '=', 'f.fisioterapeuta_id')
+        ->where('c.paciente_id', $pacienteId)
+        ->orderByDesc('c.fecha_hora')
+        ->select(
+            'c.cita_id', 'c.fecha_hora', 'c.motivo', 'c.estado',
+            DB::raw("CONCAT_WS(' ', f.nombre, f.apellido) as fisioterapeuta_nombre"),
+            'f.especialidad'
+        )
+        ->get();
+
+    return response()->json($citas);
+});
+
+// ── Slots ocupados de un fisio en una fecha ──────────────────────────────
+Route::get('/paciente/slots-ocupados', function (Request $request) {
+    $fisioId = $request->query('fisioterapeuta_id');
+    $fecha   = $request->query('fecha');
+    if (!$fisioId || !$fecha) return response()->json([]);
+
+    $slotsBase = [];
+    for ($h = 7; $h < 19; $h++) {
+        $slotsBase[] = sprintf('%02d:00', $h);
+        $slotsBase[] = sprintf('%02d:30', $h);
+    }
+
+    // Citas ya agendadas (no canceladas) — cada cita dura 1 hora = bloquea 2 slots de 30 min
+    $horasCitas = DB::table('citas')
+        ->where('fisioterapeuta_id', $fisioId)
+        ->whereDate('fecha_hora', $fecha)
+        ->whereNotIn('estado', ['cancelada'])
+        ->pluck('fecha_hora')
+        ->map(fn($fh) => substr($fh, 11, 5)); // "HH:MM"
+
+    $bloqueadosPorCita = collect($slotsBase)->filter(function ($slot) use ($horasCitas) {
+        foreach ($horasCitas as $inicio) {
+            // Calcular fin = inicio + 1 hora
+            [$hh, $mm] = explode(':', $inicio);
+            $finMin = (int)$hh * 60 + (int)$mm + 60;
+            $fin    = sprintf('%02d:%02d', intdiv($finMin, 60), $finMin % 60);
+            if ($slot >= $inicio && $slot < $fin) return true;
+        }
+        return false;
+    })->values();
+
+    // Eventos de agenda — bloquean todos los slots dentro de su rango
+    $eventos = DB::table('eventos_agenda')
+        ->where('fisioterapeuta_id', $fisioId)
+        ->where('fecha', $fecha)
+        ->get(['hora_inicio', 'hora_fin']);
+
+    $bloqueadosPorEvento = collect($slotsBase)->filter(function ($slot) use ($eventos) {
+        foreach ($eventos as $ev) {
+            $inicio = substr($ev->hora_inicio, 0, 5);
+            $fin    = substr($ev->hora_fin, 0, 5);
+            if ($slot >= $inicio && $slot < $fin) return true;
+        }
+        return false;
+    })->values();
+
+    return response()->json(
+        $bloqueadosPorCita->merge($bloqueadosPorEvento)->unique()->values()
+    );
+});
+
+// ── Agendar nueva cita (paciente elige fisio, fecha y hora) ──────────────
+Route::post('/paciente/citas', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json(['success' => false, 'message' => 'No autorizado.'], 403);
+
+    $fisioId   = (int) $request->fisioterapeuta_id;
+    $fechaHora = $request->fecha_hora;
+
+    // Validar que el fisio solicitado es el asignado al paciente
+    $pacienteRow = DB::table('pacientes')->where('paciente_id', $pacienteId)->first();
+    if (!$pacienteRow || (int) $pacienteRow->fisioterapeuta_id !== $fisioId) {
+        return response()->json(['success' => false, 'message' => 'Solo puedes agendar con tu fisioterapeuta asignado.'], 403);
+    }
+
+    $error = validarHorarioCita($fisioId, $fechaHora);
+    if ($error) return response()->json(['success' => false, 'message' => $error], 422);
+
+    $conflicto = verificarDisponibilidad($fisioId, $fechaHora);
+    if ($conflicto) return response()->json(['success' => false, 'message' => $conflicto], 409);
+
+    DB::table('citas')->insert([
+        'paciente_id'       => $pacienteId,
+        'fisioterapeuta_id' => $fisioId,
+        'fecha_hora'        => $fechaHora,
+        'motivo'            => $request->motivo ?? null,
+        'estado'            => 'programada',
+        'created_at'        => now(),
+        'updated_at'        => now(),
+    ]);
+
+    // Notificar al fisioterapeuta
+    $paciente  = DB::table('pacientes')->where('paciente_id', $pacienteId)->first();
+    $nombrePac = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
+    $fechaFmt  = (new \DateTime($fechaHora))->format('d/m/Y \a \l\a\s H:i');
+
+    DB::table('notificaciones')->insert([
+        'tipo'              => 'nueva_cita',
+        'titulo'            => 'Nueva cita agendada',
+        'mensaje'           => "{$nombrePac} agendó una cita para el {$fechaFmt}.",
+        'leida'             => false,
+        'fisioterapeuta_id' => $fisioId,
+        'paciente_id'       => null,
+        'created_at'        => now(),
+        'updated_at'        => now(),
+    ]);
+
+    // Notificar al admin
+    DB::table('notificaciones')->insert([
+        'tipo'              => 'cita_agendada_paciente',
+        'titulo'            => 'Nueva cita agendada por paciente',
+        'mensaje'           => "{$nombrePac} agendó una cita para el {$fechaFmt}.",
+        'leida'             => false,
+        'fisioterapeuta_id' => $fisioId,
+        'paciente_id'       => null,
+        'created_at'        => now(),
+        'updated_at'        => now(),
+    ]);
+
+    // Notificar al paciente (confirmación)
+    $fisioObj    = DB::table('fisioterapeutas')->where('fisioterapeuta_id', $fisioId)->first();
+    $nombreFisio = $fisioObj ? "{$fisioObj->nombre} {$fisioObj->apellido}" : 'tu especialista';
+    DB::table('notificaciones')->insert([
+        'tipo'        => 'cita_programada',
+        'titulo'      => 'Cita confirmada',
+        'mensaje'     => "Tu cita ha sido programada para el {$fechaFmt} con {$nombreFisio}.",
+        'leida'       => false,
+        'paciente_id' => $pacienteId,
+        'created_at'  => now(),
+        'updated_at'  => now(),
+    ]);
+
+    return response()->json(['success' => true, 'message' => 'Cita agendada correctamente.'], 201);
+});
+
+// ── Cancelar cita propia ─────────────────────────────────────────────────
+Route::patch('/paciente/citas/{id}/cancelar', function (Request $request, $id) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json(['success' => false], 403);
+
+    $cita = DB::table('citas')
+        ->where('cita_id', $id)
+        ->where('paciente_id', $pacienteId)
+        ->first();
+
+    if (!$cita) return response()->json(['success' => false, 'message' => 'Cita no encontrada.'], 404);
+    if ($cita->estado !== 'programada') {
+        return response()->json(['success' => false, 'message' => 'Solo se pueden cancelar citas programadas.'], 422);
+    }
+
+    DB::table('citas')->where('cita_id', $id)->update([
+        'estado'     => 'cancelada',
+        'updated_at' => now(),
+    ]);
+
+    // Notificar al fisioterapeuta
+    if ($cita->fisioterapeuta_id) {
+        $paciente  = DB::table('pacientes')->where('paciente_id', $pacienteId)->first();
+        $nombrePac = $paciente ? "{$paciente->nombre} {$paciente->apellido}" : 'Un paciente';
+        $fechaFmt  = (new \DateTime($cita->fecha_hora))->format('d/m/Y \a \l\a\s H:i');
+
+        DB::table('notificaciones')->insert([
+            'tipo'              => 'estado_cita',
+            'titulo'            => 'Cita cancelada por el paciente',
+            'mensaje'           => "{$nombrePac} canceló la cita del {$fechaFmt}. El horario queda disponible.",
+            'leida'             => false,
+            'fisioterapeuta_id' => $cita->fisioterapeuta_id,
+            'paciente_id'       => null,
+            'created_at'        => now(),
+            'updated_at'        => now(),
+        ]);
+
+        // Confirmar cancelación al paciente
+        DB::table('notificaciones')->insert([
+            'tipo'        => 'cita_cancelada',
+            'titulo'      => 'Cita cancelada',
+            'mensaje'     => "Tu cita del {$fechaFmt} ha sido cancelada exitosamente.",
+            'leida'       => false,
+            'paciente_id' => $pacienteId,
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+    }
+
+    return response()->json(['success' => true, 'message' => 'Cita cancelada.']);
+});
+
+// ── Mi equipo asignado (inventario) ─────────────────────────────────────
+Route::get('/paciente/mi-equipo', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json([]);
+
+    $equipos = DB::table('asignaciones_equipo as ae')
+        ->join('inventario as i', 'ae.inventario_id', '=', 'i.id_inventario')
+        ->where('ae.paciente_id', $pacienteId)
+        ->where('ae.estado', 'activo')
+        ->select(
+            'ae.id_asignaciones',
+            'ae.fecha_asignacion',
+            'ae.notas',
+            'i.nombre',
+            'i.tipo'
+        )
+        ->get();
+
+    return response()->json($equipos);
+});
+
+// ── Mi fisioterapeuta asignado ────────────────────────────────────────────
+Route::get('/paciente/mi-fisioterapeuta', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json(null);
+
+    $paciente = DB::table('pacientes')->where('paciente_id', $pacienteId)->first();
+    if (!$paciente || !$paciente->fisioterapeuta_id) return response()->json(null);
+
+    $fisio = DB::table('fisioterapeutas as f')
+        ->leftJoin('usuarios as u', 'f.usuario_id', '=', 'u.usuario_id')
+        ->where('f.fisioterapeuta_id', $paciente->fisioterapeuta_id)
+        ->select('f.fisioterapeuta_id', 'f.nombre', 'f.apellido', 'f.especialidad', 'f.telefono', 'f.horario', 'u.correo')
+        ->first();
+
+    if ($fisio) $fisio->horario = $fisio->horario ? json_decode($fisio->horario, true) : null;
+
+    return response()->json($fisio);
+});
+
+// ── Fisioterapeutas disponibles para agendar ─────────────────────────────
+Route::get('/paciente/fisioterapeutas', function () {
+    return response()->json(
+        DB::table('fisioterapeutas')
+            ->where('activo', true)
+            ->select('fisioterapeuta_id', 'nombre', 'apellido', 'especialidad', 'horario')
+            ->get()
+            ->map(function ($f) {
+                $f->horario = $f->horario ? json_decode($f->horario, true) : null;
+                return $f;
+            })
+    );
+});
+
+// ── Notificaciones del paciente ──────────────────────────────────────────
+Route::get('/paciente/notificaciones', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json([]);
+
+    return response()->json(
+        DB::table('notificaciones')
+            ->where('paciente_id', $pacienteId)
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+    );
+});
+
+Route::patch('/paciente/notificaciones/{id}/leida', function (Request $request, $id) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    DB::table('notificaciones')
+        ->where('notificacion_id', $id)
+        ->where('paciente_id', $pacienteId)
+        ->update(['leida' => true, 'updated_at' => now()]);
+    return response()->json(['success' => true]);
+});
+
+Route::patch('/paciente/notificaciones/marcar-todas', function (Request $request) use ($getPacienteId) {
+    $pacienteId = $getPacienteId($request);
+    if (!$pacienteId) return response()->json(['success' => false], 403);
+    DB::table('notificaciones')
+        ->where('paciente_id', $pacienteId)
+        ->where('leida', false)
+        ->update(['leida' => true, 'updated_at' => now()]);
+    return response()->json(['success' => true]);
+});
+
+// Actualizar tipos de notificaciones del admin para incluir citas agendadas por paciente
+Route::patch('/admin/notificaciones/tipos', function () {
+    // No-op: se gestiona en la consulta de admin/notificaciones
+    return response()->json(['success' => true]);
+});
 
 }); // fin middleware auth:sanctum (módulos 2–5)

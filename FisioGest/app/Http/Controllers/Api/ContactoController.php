@@ -43,13 +43,14 @@ class ContactoController extends Controller
                     DB::raw("CONCAT_WS(' ', p.nombre, p.apellido) as nombre"),
                     DB::raw("'paciente' as tipo"),
                     'p.telefono',
-                    DB::raw("NULL as email"),
+                    DB::raw('p.correo as email'),
                     DB::raw("'activo' as estado"),
                     DB::raw("'paciente' as origen"),
                     DB::raw('NULL as raw_id')
                 )
                 ->when($search, fn($q) =>
                     $q->where(DB::raw("CONCAT_WS(' ', p.nombre, p.apellido)"), 'like', "%$search%")
+                      ->orWhere('p.correo', 'like', "%$search%")
                 )
                 ->get()
             : collect();

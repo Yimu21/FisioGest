@@ -64,10 +64,25 @@ export const citaService = {
 }
 
 export const pacienteService = {
-  getAll:  () => api.get('/pacientes'),
-  create:  (data) => api.post('/pacientes', data),
-  update:  (id, data) => api.put(`/pacientes/${id}`, data),
-  delete:  (id) => api.delete(`/pacientes/${id}`),
+  // Admin: gestión de pacientes
+  getAll:            () => api.get('/pacientes'),
+  create:            (data) => api.post('/pacientes', data),
+  update:            (id, data) => api.put(`/pacientes/${id}`, data),
+  delete:            (id) => api.delete(`/pacientes/${id}`),
+  crearCredenciales: (id, data) => api.post(`/pacientes/${id}/credenciales`, data),
+  revocarAcceso:     (id) => api.patch(`/pacientes/${id}/revocar-acceso`),
+  habilitarAcceso:   (id) => api.patch(`/pacientes/${id}/habilitar-acceso`),
+  // Portal paciente: datos propios
+  getMiPerfil:        () => api.get('/paciente/mi-perfil'),
+  updateMiPerfil:     (data) => api.put('/paciente/mi-perfil', data),
+  updateMiCuenta:     (data) => api.put('/paciente/mi-cuenta', data),
+  getMisCitas:        () => api.get('/paciente/mis-citas'),
+  agendarCita:        (data) => api.post('/paciente/citas', data),
+  cancelarCita:       (id) => api.patch(`/paciente/citas/${id}/cancelar`),
+  getSlotsOcupados:    (fisioId, fecha) => api.get(`/paciente/slots-ocupados?fisioterapeuta_id=${fisioId}&fecha=${fecha}`),
+  getMiEquipo:         () => api.get('/paciente/mi-equipo'),
+  getMiFisioterapeuta: () => api.get('/paciente/mi-fisioterapeuta'),
+  getFisioterapeutas:  () => api.get('/paciente/fisioterapeutas'),
 }
 
 export const inventarioService = {
@@ -113,4 +128,11 @@ export const fisioNotificacionesService = {
   getAll:      () => api.get('/fisio/notificaciones'),
   marcarLeida: (id) => api.patch(`/fisio/notificaciones/${id}/leida`),
   marcarTodas: () => api.patch('/fisio/notificaciones/marcar-todas'),
+}
+
+
+export const pacienteNotificacionesService = {
+  getAll:      () => api.get('/paciente/notificaciones'),
+  marcarLeida: (id) => api.patch(`/paciente/notificaciones/${id}/leida`),
+  marcarTodas: () => api.patch('/paciente/notificaciones/marcar-todas'),
 }

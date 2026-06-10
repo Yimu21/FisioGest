@@ -15,14 +15,10 @@ class PacienteController extends Controller
         return response()->json($pacientes);
     }
 
-    // ¡AQUÍ CORREGIMOS EL ERROR DE INTEGRIDAD DE RAÍZ!
+    // La lógica de creación de pacientes vive en routes/api.php (POST /pacientes).
+    // Este método no está enrutado y se conserva solo para estructura MVC.
     public function store(Request $request)
     {
-        DB::table('pacientes')->insert([
-            'nombre' => $request->nombre,
-            'usuario_id' => 1 // Amárralo al usuario 1 obligatorio para que la DB no tire el error 23000
-        ]);
-
-        return response()->json(['success' => true, 'message' => 'Paciente guardado con éxito']);
+        return response()->json(['message' => 'Usa el endpoint POST /api/pacientes.'], 501);
     }
 }
