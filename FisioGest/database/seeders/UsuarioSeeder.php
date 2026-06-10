@@ -47,6 +47,18 @@ class UsuarioSeeder extends Seeder
                 'contrasena' => Hash::make('fisio123'),
                 'rol'        => 'fisioterapeuta',
             ],
+            [
+                'nombre'     => 'Karen Portillo',
+                'correo'     => 'karen@fisiogest.com',
+                'contrasena' => Hash::make('fisio123'),
+                'rol'        => 'fisioterapeuta',
+            ],
+             [
+                'nombre'     => 'Esmeralda Cisneros',
+                'correo'     => 'esmeralda@fisiogest.com',
+                'contrasena' => Hash::make('paciente123'),
+                'rol'        => 'paciente',
+            ],
         ];
 
         foreach ($usuarios as $u) {

@@ -52,22 +52,7 @@
           Inventario
         </router-link>
 
-        <div class="nav-group">
-          <div class="nav-item" @click="toggle('progresos')">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-              <line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-            Progresos
-            <svg class="chevron" :class="{ open: open.progresos }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
-          <div class="nav-sub" v-show="open.progresos">
-            <span class="sub-item">Ver progresos</span>
-            <span class="sub-item">Nuevo progreso</span>
-          </div>
-        </div>
+      
 
         <router-link to="/configuracion" class="nav-item" active-class="active">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

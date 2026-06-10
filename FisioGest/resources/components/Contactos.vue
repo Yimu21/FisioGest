@@ -121,8 +121,7 @@
               </div>
               <div class="form-group">
                 <label>Tipo</label>
-                <select v-model="form.tipo" required>
-                  <option value="referido">Referido</option>
+                <select v-model="form.tipo" required>              
                   <option value="proveedor">Proveedor</option>
                 </select>
               </div>
@@ -201,14 +200,12 @@ const tiposOpciones = [
   { value: '', label: 'Todos' },
   { value: 'fisioterapeuta', label: 'Fisioterapeuta' },
   { value: 'paciente',       label: 'Paciente' },
-  { value: 'referido',       label: 'Referido' },
   { value: 'proveedor',      label: 'Proveedor' },
 ]
 
 const badgeClass = {
   fisioterapeuta: 'badge-fis',
   paciente:       'badge-pac',
-  referido:       'badge-ref',
   proveedor:      'badge-prov',
 }
 
