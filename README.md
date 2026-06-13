@@ -19,29 +19,42 @@ Moisés Abelino Ramírez Rubío.
 Erick Josué Rivera Velásquez.
 
 
-Sigue estos pasos en orden. Saltarte alguno puede generar errores de foreign key o datos inconsistentes.
-1.	Clona el repositorio e instala dependencias:
-  git clone <url-del-repositorio>
-  cd FisioGest
-  composer install
-  npm install
+## ▶️ Cómo ejecutar
 
-2. 	Configura el archivo de entorno:
-  cp .env.example .env
-  php artisan key:generate
+Sigue estos pasos en orden. Saltarte alguno puede generar errores
+de foreign key o datos inconsistentes.
 
-3. Edita .env con tus credenciales de base de datos (DB_DATABASE, DB_USERNAME, DB_PASSWORD).
-   
-4.	Crea la base de datos en MySQL:
-  CREATE DATABASE fisiogest
+1. **Clona el repositorio e instala dependencias**
 
-5.	Ejecuta migraciones y seeders:
-  php artisan migrate --seed
-  Advertencia: Este comando crea todas las tablas y carga los datos de prueba. No uses migrate:fresh en producción.
+   ```bash
+   git clone <url-del-repositorio>
+   cd FisioGest
+   composer install
+   npm install
+   ```
 
-6.	Compila los assets de Vue:
-  npm run dev
+2. **Configura el archivo de entorno**
 
-7.	Levanta el servidor:
-  php artisan serve
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+3. **Edita `.env` con tus credenciales de base de datos**
+   (DB_DATABASE, DB_USERNAME, DB_PASSWORD)
+
+4. **Crea la base de datos en MySQL**
+
+   ```sql
+   CREATE DATABASE fisiogest
+   ```
+
+5. **Ejecuta migraciones y seeders**
+
+   ```bash
+   php artisan migrate --seed
+   ```
+
+   > ⚠️ Este comando crea todas las tablas y carga los datos de prueba.
+   > No uses `migrate:fresh` en producción.
 
